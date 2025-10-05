@@ -3413,6 +3413,7 @@ def show_fifa_u20_view():
         
         # Country flag mapping - Complete
         COUNTRY_FLAG_MAP = {
+            'Arabia Saudita': 'saff.png',
             'Italia': 'italia.png',
             'Estados Unidos': 'usa.png',
             'Francia': 'francia.png',
