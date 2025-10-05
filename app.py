@@ -3918,14 +3918,182 @@ def show_fifa_u20_view():
         st.info("🚧 Campogramas will be implemented in future updates" if st.session_state.language == 'en' else "🚧 سيتم تنفيذ الرسوم التكتيكية في التحديثات القادمة")
 
 # -----------------------------
+# LOGIN SYSTEM
+# -----------------------------
+# User credentials database
+USERS = {
+    'juangambero': {
+        'password': 'juangambero',
+        'photo': 'juan.png',
+        'name': 'Juan Gambero'
+    },
+    'alvarolopez': {
+        'password': 'alvarolopez',
+        'photo': 'alvaro.png',
+        'name': 'Alvaro Lopez'
+    },
+    'rafagil': {
+        'password': 'rafagil',
+        'photo': 'rafa.png',
+        'name': 'Rafa Gil'
+    }
+}
+
+def show_login_page():
+    """Display login page with Al Nassr branding"""
+    
+    # Center the login form
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        # Load and display Al Nassr logo
+        try:
+            from PIL import Image
+            import io
+            import base64
+            
+            logo_img = Image.open('alnassr.png')
+            logo_img.thumbnail((200, 200))
+            buffered = io.BytesIO()
+            if logo_img.mode in ('RGBA', 'LA', 'P'):
+                logo_img.save(buffered, format="PNG")
+            else:
+                logo_img = logo_img.convert('RGB')
+                logo_img.save(buffered, format="PNG")
+            logo_str = base64.b64encode(buffered.getvalue()).decode()
+            logo_html = f'<img src="data:image/png;base64,{logo_str}" style="width: 150px; display: block; margin: 0 auto;">'
+        except:
+            logo_html = '<div style="text-align: center; font-size: 80px;">⚽</div>'
+        
+        # Login card
+        st.markdown(f"""
+            <div style="
+                background: white;
+                border-radius: 16px;
+                padding: 40px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+                margin-top: 80px;
+                text-align: center;
+                border-top: 6px solid #FFC60A;
+            ">
+                {logo_html}
+                <h1 style="color: #1a2332; margin: 25px 0 10px 0; font-size: 28px; font-weight: 700;">INICIO DE SESIÓN</h1>
+                <p style="color: #666; font-size: 14px; margin-bottom: 30px; letter-spacing: 1.5px; text-transform: uppercase;">AL NASSR SCOUTING DEPARTMENT</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        
+        # Login form
+        with st.form("login_form", clear_on_submit=False):
+            username = st.text_input(
+                "👤 Usuario",
+                placeholder="Ingresa tu usuario",
+                key="login_username"
+            )
+            password = st.text_input(
+                "🔒 Contraseña",
+                type="password",
+                placeholder="Ingresa tu contraseña",
+                key="login_password"
+            )
+            
+            col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+            with col_btn2:
+                submit = st.form_submit_button(
+                    "🚀 INICIAR SESIÓN",
+                    use_container_width=True
+                )
+            
+            if submit:
+                if username in USERS and USERS[username]['password'] == password:
+                    # Successful login
+                    st.session_state.authenticated = True
+                    st.session_state.current_user = username
+                    st.session_state.user_name = USERS[username]['name']
+                    st.session_state.user_photo = USERS[username]['photo']
+                    st.success(f"✅ Bienvenido, {USERS[username]['name']}!")
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error("❌ Usuario o contraseña incorrectos")
+        
+        # Footer
+        st.markdown("""
+            <div style="text-align: center; margin-top: 40px; color: #999; font-size: 12px;">
+                <p>© 2025 Al Nassr FC - Scouting Department</p>
+                <p style="margin-top: 5px;">🔒 Sistema Seguro</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+def logout():
+    """Logout user and clear session"""
+    st.session_state.authenticated = False
+    st.session_state.current_user = None
+    st.session_state.user_name = None
+    st.session_state.user_photo = None
+    st.session_state.page = 'home'
+    st.rerun()
+
+# -----------------------------
 # MAIN APPLICATION
 # -----------------------------
 def main():
+    # Initialize authentication state
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+    if 'current_user' not in st.session_state:
+        st.session_state.current_user = None
+    if 'user_name' not in st.session_state:
+        st.session_state.user_name = None
+    if 'user_photo' not in st.session_state:
+        st.session_state.user_photo = None
+    
+    # Check authentication
+    if not st.session_state.authenticated:
+        show_login_page()
+        return
+    
     # Apply styling
     apply_custom_css()
     
     # Language toggle button in sidebar
     with st.sidebar:
+        # User info at top
+        if st.session_state.user_name:
+            try:
+                from PIL import Image
+                import io
+                import base64
+                
+                user_img = Image.open(st.session_state.user_photo)
+                user_img.thumbnail((60, 60))
+                buffered = io.BytesIO()
+                if user_img.mode in ('RGBA', 'LA', 'P'):
+                    user_img.save(buffered, format="PNG")
+                else:
+                    user_img = user_img.convert('RGB')
+                    user_img.save(buffered, format="PNG")
+                user_img_str = base64.b64encode(buffered.getvalue()).decode()
+                user_photo_html = f'<img src="data:image/png;base64,{user_img_str}" style="width: 50px; height: 50px; border-radius: 50%; border: 3px solid #FFC60A; object-fit: cover;">'
+            except:
+                user_photo_html = '👤'
+            
+            st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, #1a2332 0%, #2d3e50 100%);
+                    padding: 15px;
+                    border-radius: 10px;
+                    text-align: center;
+                    margin-bottom: 20px;
+                    border: 2px solid #FFC60A;
+                ">
+                    {user_photo_html}
+                    <p style="color: white; margin: 10px 0 0 0; font-weight: 600; font-size: 14px;">{st.session_state.user_name}</p>
+                    <p style="color: #FFC60A; margin: 3px 0 0 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px;">SCOUT</p>
+                </div>
+            """, unsafe_allow_html=True)
+        
         st.markdown("### Settings / الإعدادات")
         if st.button("🇸🇦 عربي" if st.session_state.language == 'en' else "🇬🇧 English",
                     key="lang_toggle",
@@ -3942,6 +4110,12 @@ def main():
                         use_container_width=True):
                 st.session_state.page = 'home'
                 st.rerun()
+        
+        st.markdown("---")
+        
+        # Logout button
+        if st.button("🚪 Cerrar Sesión", key="btn_logout", use_container_width=True, type="secondary"):
+            logout()
     
     # Show appropriate page based on session state
     if st.session_state.page == 'home':
