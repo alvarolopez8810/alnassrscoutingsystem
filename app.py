@@ -500,13 +500,21 @@ def show_home_page():
             st.rerun()
     
     with col3:
-        # Advanced Data Analysis button
-        st.markdown(
-            '<div class="home-button-container"><div style="font-size: 80px;">🔬</div></div>',
-            unsafe_allow_html=True
-        )
+        # Advanced Data Analysis - SAFF+ button
+        try:
+            saffplus_logo = Image.open('saffplus.jpg')
+            buffered = io.BytesIO()
+            saffplus_logo.save(buffered, format="JPEG")
+            saffplus_img_str = base64.b64encode(buffered.getvalue()).decode()
+            
+            st.markdown(
+                f'<div class="home-button-container"><img src="data:image/jpeg;base64,{saffplus_img_str}" class="home-button-image"></div>',
+                unsafe_allow_html=True
+            )
+        except:
+            st.markdown('<div class="home-button-container"><div style="font-size: 80px;">🔬</div></div>', unsafe_allow_html=True)
         
-        if st.button("ADVANCED DATA\nANALYSIS\n\nتحليل البيانات المتقدم", key="btn_advanced_data", use_container_width=True):
+        if st.button("ADVANCED DATA\nANALYSIS - SAFF+\n\nتحليل البيانات - SAFF+", key="btn_advanced_data", use_container_width=True):
             st.session_state.page = 'advanced_data'
             st.rerun()
 
@@ -1837,12 +1845,14 @@ def show_database_view(category):
                     st.rerun()
 
 # -----------------------------
-# ADVANCED DATA ANALYSIS
+# ADVANCED DATA ANALYSIS - SAFF+
 # -----------------------------
 def show_advanced_data_analysis(category):
-    """Show advanced data analysis from u18u17.xlsx"""
-    st.markdown("### 🔬 ADVANCED DATA - ANALYSIS")
-    st.markdown("Analysis of U18 and U17 players data")
+    """Show advanced data analysis from u18u17.xlsx with dependent filters"""
+    
+    # Header
+    st.markdown("<h2 style='text-align: center; color: #002B5B;'>🔬 ADVANCED DATA ANALYSIS - SAFF+</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #666;'>Analysis of U18 and U17 players data</p>", unsafe_allow_html=True)
     
     try:
         # Load data from u18u17.xlsx
@@ -1854,185 +1864,346 @@ def show_advanced_data_analysis(category):
         st.info("📝 Please ensure u18u17.xlsx file exists with sheets: 'Datos Completos U18', 'Datos Completos U17', 'Jugadores en Ambas Ligas'")
         return
     
-    # CSS for styling
+    # Function to extract Year of Birth from birthday column
+    def extract_year_of_birth(birthday_value):
+        """Extract year from birthday field - handles various formats"""
+        if pd.isna(birthday_value):
+            return None
+        try:
+            # Convert to string and extract first 4 digits (year)
+            birthday_str = str(birthday_value)
+            # Try to find 4 consecutive digits (year)
+            import re
+            year_match = re.search(r'(\d{4})', birthday_str)
+            if year_match:
+                year = int(year_match.group(1))
+                # Validate year is reasonable (between 1990 and 2015 for youth players)
+                if 1990 <= year <= 2015:
+                    return year
+        except:
+            pass
+        return None
+    
+    # Add Year of Birth column to all dataframes and convert numeric columns
+    for df in [df_u18, df_u17, df_both]:
+        if 'birthday' in df.columns:
+            df['Year of Birth'] = df['birthday'].apply(extract_year_of_birth)
+        
+        # Convert numeric columns to proper types
+        numeric_columns = ['MP', 'MSt', 'MSub', 'Goals', 'Cards', 'Minutes', 
+                          'U18_MP', 'U18_Minutes', 'U18_Goals', 'U18_Cards',
+                          'U17_MP', 'U17_Minutes', 'U17_Goals', 'U17_Cards',
+                          'Total_MP', 'Total_Minutes', 'Total_Goals']
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+    
+    # For Both Leagues, add position from U18 data
+    if not df_both.empty and 'position' not in df_both.columns:
+        # Create a mapping of player_name to position from U18 data
+        if not df_u18.empty and 'position' in df_u18.columns and 'player_name' in df_u18.columns:
+            position_map = df_u18.set_index('player_name')['position'].to_dict()
+            df_both['position'] = df_both['player_name'].map(position_map)
+    
+    # Custom CSS
     st.markdown("""
     <style>
-        .filter-section {
+        .filter-header {
             background: linear-gradient(135deg, #1a2332 0%, #2a3342 100%);
-            padding: 20px;
-            border-radius: 12px;
-            border-left: 6px solid #FFC60A;
-            margin-bottom: 20px;
-        }
-        .data-card {
-            background: white;
+            color: white;
             padding: 15px;
+            border-radius: 8px;
+            border-left: 5px solid #FFC60A;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
             border-radius: 10px;
             border: 2px solid #FFC60A;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
         }
     </style>
     """, unsafe_allow_html=True)
     
-    # League selector
-    st.markdown("<div class='filter-section'>", unsafe_allow_html=True)
+    # Data source selector
+    st.markdown("<div class='filter-header'>🏆 Select Data Source</div>", unsafe_allow_html=True)
     league_option = st.radio(
-        "🏆 Select Data Source",
+        "",
         ["U18 League", "U17 League", "Players in Both Leagues"],
-        horizontal=True
+        horizontal=True,
+        label_visibility="collapsed"
     )
-    st.markdown("</div>", unsafe_allow_html=True)
     
     # Select appropriate dataframe
     if league_option == "U18 League":
-        df = df_u18.copy()
+        df_original = df_u18.copy()
         league_title = "U18"
     elif league_option == "U17 League":
-        df = df_u17.copy()
+        df_original = df_u17.copy()
         league_title = "U17"
     else:
-        df = df_both.copy()
+        df_original = df_both.copy()
         league_title = "Both Leagues"
     
-    if df.empty:
+    if df_original.empty:
         st.warning("⚠️ No data available")
         return
     
     st.markdown(f"<h3 style='color: #1a2332;'>📄 {league_title} - Player Statistics</h3>", unsafe_allow_html=True)
-    st.markdown(f"**Total Players:** {len(df)}")
     
-    # Filters Section
-    st.markdown("---")
-    st.markdown("### 🔍 Filters")
+    # Initialize session state for filters
+    if 'clear_filters' not in st.session_state:
+        st.session_state.clear_filters = False
     
-    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-    
-    with col_f1:
-        # Team filter
-        if 'Team' in df.columns or 'Equipo' in df.columns:
-            team_col = 'Team' if 'Team' in df.columns else 'Equipo'
-            teams = ['All'] + sorted(df[team_col].dropna().unique().tolist())
-            filter_team = st.selectbox("🛡️ Team", teams)
-        else:
-            filter_team = 'All'
-    
-    with col_f2:
-        # Number filter
-        if 'Number' in df.columns or 'Número' in df.columns:
-            num_col = 'Number' if 'Number' in df.columns else 'Número'
-            filter_number = st.number_input("🔢 Number (0 = All)", min_value=0, max_value=99, value=0)
-        else:
-            filter_number = 0
-    
-    with col_f3:
-        # Age filter
-        if 'Age' in df.columns or 'Edad' in df.columns:
-            age_col = 'Age' if 'Age' in df.columns else 'Edad'
-            ages = sorted(df[age_col].dropna().unique().tolist())
-            filter_age = st.selectbox("🎂 Age", ['All'] + ages)
-        else:
-            filter_age = 'All'
-    
-    with col_f4:
-        # MP filter
-        if 'MP' in df.columns:
-            filter_mp_min = st.number_input("⚽ Min MP", min_value=0, value=0)
-        else:
-            filter_mp_min = 0
-    
-    # Additional filters row
-    col_f5, col_f6, col_f7, col_f8 = st.columns(4)
-    
-    with col_f5:
-        # MSt filter
-        if 'MSt' in df.columns:
-            filter_mst_min = st.number_input("🎯 Min MSt", min_value=0, value=0)
-        else:
-            filter_mst_min = 0
-    
-    with col_f6:
-        # MSub filter
-        if 'MSub' in df.columns:
-            filter_msub_min = st.number_input("🔄 Min MSub", min_value=0, value=0)
-        else:
-            filter_msub_min = 0
-    
-    with col_f7:
-        # Goals filter
-        if 'Goals' in df.columns or 'Goles' in df.columns:
-            goals_col = 'Goals' if 'Goals' in df.columns else 'Goles'
-            filter_goals_min = st.number_input("⚽️ Min Goals", min_value=0, value=0)
-        else:
-            filter_goals_min = 0
-    
-    with col_f8:
-        # Cards filter (Yellow or Red)
-        if 'Yellow Cards' in df.columns or 'Red Cards' in df.columns:
-            filter_cards = st.checkbox("🟨🟥 Has Cards")
-        else:
-            filter_cards = False
-    
-    # Special filters for "Both Leagues"
-    if league_option == "Players in Both Leagues":
-        col_f9, col_f10 = st.columns(2)
+    # Sidebar filters with dependencies
+    with st.sidebar:
+        st.markdown("### 🔍 Filters")
+        st.markdown("---")
         
-        with col_f9:
-            if 'MP U17' in df.columns:
-                filter_mp_u17_min = st.number_input("⚽ Min MP in U17", min_value=0, value=0)
-            else:
-                filter_mp_u17_min = 0
+        # Start with full dataset
+        filtered_df = df_original.copy()
         
-        with col_f10:
-            if 'MP U18' in df.columns:
-                filter_mp_u18_min = st.number_input("⚽ Min MP in U18", min_value=0, value=0)
-            else:
-                filter_mp_u18_min = 0
-    else:
-        filter_mp_u17_min = 0
-        filter_mp_u18_min = 0
+        # League filter
+        if 'league' in filtered_df.columns:
+            leagues_available = ['All'] + sorted(filtered_df['league'].dropna().unique().tolist())
+            selected_league = st.selectbox("🏆 League", leagues_available, key="filter_league")
+            if selected_league != 'All':
+                filtered_df = filtered_df[filtered_df['league'] == selected_league]
+        
+        # Team filter (dependent on League)
+        team_col = None
+        if 'team' in filtered_df.columns:
+            team_col = 'team'
+        elif 'team_U18' in filtered_df.columns:
+            team_col = 'team_U18'
+        
+        if team_col:
+            teams_available = ['All'] + sorted(filtered_df[team_col].dropna().unique().tolist())
+            selected_team = st.selectbox("🛡️ Team", teams_available, key="filter_team")
+            if selected_team != 'All':
+                if team_col == 'team_U18':
+                    # For Both Leagues, filter by either U18 or U17 team
+                    filtered_df = filtered_df[(filtered_df['team_U18'] == selected_team) | (filtered_df['team_U17'] == selected_team)]
+                else:
+                    filtered_df = filtered_df[filtered_df[team_col] == selected_team]
+        
+        # Position filter (dependent on previous filters)
+        if 'position' in filtered_df.columns:
+            positions_available = ['All'] + sorted([p for p in filtered_df['position'].dropna().unique().tolist() if str(p).strip()])
+            selected_position = st.selectbox("🎯 Position", positions_available, key="filter_position")
+            if selected_position != 'All':
+                filtered_df = filtered_df[filtered_df['position'] == selected_position]
+        
+        # Jersey filter (dependent on previous filters)
+        if 'jersey' in filtered_df.columns:
+            jerseys_available = ['All'] + sorted([int(j) for j in filtered_df['jersey'].dropna().unique().tolist() if str(j).strip() and str(j) != 'nan'])
+            if jerseys_available and len(jerseys_available) > 1:
+                selected_jersey = st.selectbox("🔢 Jersey", jerseys_available, key="filter_jersey")
+                if selected_jersey != 'All':
+                    filtered_df = filtered_df[filtered_df['jersey'] == selected_jersey]
+        
+        # Year of Birth filter (dependent on previous filters)
+        if 'Year of Birth' in filtered_df.columns:
+            years_available = sorted([y for y in filtered_df['Year of Birth'].dropna().unique().tolist()], reverse=True)
+            if years_available:
+                years_options = ['All'] + [int(y) for y in years_available]
+                selected_year = st.selectbox("🎂 Year of Birth", years_options, key="filter_year")
+                if selected_year != 'All':
+                    filtered_df = filtered_df[filtered_df['Year of Birth'] == selected_year]
+        
+        # Matches Played (MP) slider
+        mp_col = None
+        if 'MP' in filtered_df.columns:
+            mp_col = 'MP'
+        elif 'Total_MP' in filtered_df.columns:
+            mp_col = 'Total_MP'
+        
+        if mp_col:
+            mp_values = filtered_df[mp_col].dropna()
+            if not mp_values.empty:
+                min_mp = int(mp_values.min())
+                max_mp = int(mp_values.max())
+                if min_mp < max_mp:
+                    selected_mp = st.slider(
+                        "⚽ Matches Played (MP)",
+                        min_value=min_mp,
+                        max_value=max_mp,
+                        value=(min_mp, max_mp),
+                        key="filter_mp"
+                    )
+                    filtered_df = filtered_df[(filtered_df[mp_col] >= selected_mp[0]) & (filtered_df[mp_col] <= selected_mp[1])]
+                    st.caption(f"Range: {selected_mp[0]} - {selected_mp[1]} matches")
+        
+        # Minutes slider
+        minutes_col = None
+        if 'Minutes' in filtered_df.columns:
+            minutes_col = 'Minutes'
+        elif 'Total_Minutes' in filtered_df.columns:
+            minutes_col = 'Total_Minutes'
+        
+        if minutes_col:
+            minutes_values = filtered_df[minutes_col].dropna()
+            if not minutes_values.empty:
+                min_minutes = int(minutes_values.min())
+                max_minutes = int(minutes_values.max())
+                if min_minutes < max_minutes:
+                    selected_minutes = st.slider(
+                        "⏱️ Minutes" if minutes_col != 'Total_Minutes' else "⏱️ Total Minutes",
+                        min_value=min_minutes,
+                        max_value=max_minutes,
+                        value=(min_minutes, max_minutes),
+                        key="filter_minutes"
+                    )
+                    filtered_df = filtered_df[(filtered_df[minutes_col] >= selected_minutes[0]) & (filtered_df[minutes_col] <= selected_minutes[1])]
+                    st.caption(f"Range: {selected_minutes[0]} - {selected_minutes[1]} min")
+        
+        # Additional filters for "Players in Both Leagues"
+        if league_option == "Players in Both Leagues":
+            st.markdown("---")
+            st.markdown("**🔄 Both Leagues Filters**")
+            
+            # U18 MP filter
+            if 'U18_MP' in filtered_df.columns:
+                u18_mp_values = filtered_df['U18_MP'].dropna()
+                if not u18_mp_values.empty:
+                    min_u18_mp = int(u18_mp_values.min())
+                    max_u18_mp = int(u18_mp_values.max())
+                    if min_u18_mp < max_u18_mp:
+                        selected_u18_mp = st.slider(
+                            "⚽ U18 Matches Played",
+                            min_value=min_u18_mp,
+                            max_value=max_u18_mp,
+                            value=(min_u18_mp, max_u18_mp),
+                            key="filter_u18_mp"
+                        )
+                        filtered_df = filtered_df[(filtered_df['U18_MP'] >= selected_u18_mp[0]) & (filtered_df['U18_MP'] <= selected_u18_mp[1])]
+            
+            # U17 MP filter
+            if 'U17_MP' in filtered_df.columns:
+                u17_mp_values = filtered_df['U17_MP'].dropna()
+                if not u17_mp_values.empty:
+                    min_u17_mp = int(u17_mp_values.min())
+                    max_u17_mp = int(u17_mp_values.max())
+                    if min_u17_mp < max_u17_mp:
+                        selected_u17_mp = st.slider(
+                            "⚽ U17 Matches Played",
+                            min_value=min_u17_mp,
+                            max_value=max_u17_mp,
+                            value=(min_u17_mp, max_u17_mp),
+                            key="filter_u17_mp"
+                        )
+                        filtered_df = filtered_df[(filtered_df['U17_MP'] >= selected_u17_mp[0]) & (filtered_df['U17_MP'] <= selected_u17_mp[1])]
+            
+            # U18 Minutes filter
+            if 'U18_Minutes' in filtered_df.columns:
+                u18_min_values = filtered_df['U18_Minutes'].dropna()
+                if not u18_min_values.empty:
+                    min_u18_min = int(u18_min_values.min())
+                    max_u18_min = int(u18_min_values.max())
+                    if min_u18_min < max_u18_min:
+                        selected_u18_min = st.slider(
+                            "⏱️ U18 Minutes",
+                            min_value=min_u18_min,
+                            max_value=max_u18_min,
+                            value=(min_u18_min, max_u18_min),
+                            key="filter_u18_min"
+                        )
+                        filtered_df = filtered_df[(filtered_df['U18_Minutes'] >= selected_u18_min[0]) & (filtered_df['U18_Minutes'] <= selected_u18_min[1])]
+            
+            # U17 Minutes filter
+            if 'U17_Minutes' in filtered_df.columns:
+                u17_min_values = filtered_df['U17_Minutes'].dropna()
+                if not u17_min_values.empty:
+                    min_u17_min = int(u17_min_values.min())
+                    max_u17_min = int(u17_min_values.max())
+                    if min_u17_min < max_u17_min:
+                        selected_u17_min = st.slider(
+                            "⏱️ U17 Minutes",
+                            min_value=min_u17_min,
+                            max_value=max_u17_min,
+                            value=(min_u17_min, max_u17_min),
+                            key="filter_u17_min"
+                        )
+                        filtered_df = filtered_df[(filtered_df['U17_Minutes'] >= selected_u17_min[0]) & (filtered_df['U17_Minutes'] <= selected_u17_min[1])]
+            
+            # U18 Goals filter
+            if 'U18_Goals' in filtered_df.columns:
+                u18_goals_values = filtered_df['U18_Goals'].dropna()
+                if not u18_goals_values.empty:
+                    min_u18_goals = int(u18_goals_values.min())
+                    max_u18_goals = int(u18_goals_values.max())
+                    if min_u18_goals < max_u18_goals:
+                        selected_u18_goals = st.slider(
+                            "⚽ U18 Goals",
+                            min_value=min_u18_goals,
+                            max_value=max_u18_goals,
+                            value=(min_u18_goals, max_u18_goals),
+                            key="filter_u18_goals"
+                        )
+                        filtered_df = filtered_df[(filtered_df['U18_Goals'] >= selected_u18_goals[0]) & (filtered_df['U18_Goals'] <= selected_u18_goals[1])]
+            
+            # U17 Goals filter
+            if 'U17_Goals' in filtered_df.columns:
+                u17_goals_values = filtered_df['U17_Goals'].dropna()
+                if not u17_goals_values.empty:
+                    min_u17_goals = int(u17_goals_values.min())
+                    max_u17_goals = int(u17_goals_values.max())
+                    if min_u17_goals < max_u17_goals:
+                        selected_u17_goals = st.slider(
+                            "⚽ U17 Goals",
+                            min_value=min_u17_goals,
+                            max_value=max_u17_goals,
+                            value=(min_u17_goals, max_u17_goals),
+                            key="filter_u17_goals"
+                        )
+                        filtered_df = filtered_df[(filtered_df['U17_Goals'] >= selected_u17_goals[0]) & (filtered_df['U17_Goals'] <= selected_u17_goals[1])]
+            
+            # Total Goals filter
+            if 'Total_Goals' in filtered_df.columns:
+                total_goals_values = filtered_df['Total_Goals'].dropna()
+                if not total_goals_values.empty:
+                    min_total_goals = int(total_goals_values.min())
+                    max_total_goals = int(total_goals_values.max())
+                    if min_total_goals < max_total_goals:
+                        selected_total_goals = st.slider(
+                            "🎯 Total Goals",
+                            min_value=min_total_goals,
+                            max_value=max_total_goals,
+                            value=(min_total_goals, max_total_goals),
+                            key="filter_total_goals"
+                        )
+                        filtered_df = filtered_df[(filtered_df['Total_Goals'] >= selected_total_goals[0]) & (filtered_df['Total_Goals'] <= selected_total_goals[1])]
+        
+        # Quick search by player name
+        st.markdown("---")
+        player_search = st.text_input("🔍 Quick search (Player name)", placeholder="Type player name...", key="filter_search")
+        if player_search:
+            if 'player_name' in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df['player_name'].str.contains(player_search, case=False, na=False)]
+        
+        # Clear filters button
+        st.markdown("---")
+        if st.button("🗑️ Clear All Filters", use_container_width=True):
+            # Clear all filter keys
+            filter_keys = ['filter_league', 'filter_team', 'filter_position', 'filter_jersey', 'filter_year', 
+                          'filter_mp', 'filter_minutes', 'filter_search',
+                          'filter_u18_mp', 'filter_u17_mp', 'filter_u18_min', 'filter_u17_min',
+                          'filter_u18_goals', 'filter_u17_goals', 'filter_total_goals']
+            for key in filter_keys:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
     
-    # Apply filters
-    filtered_df = df.copy()
-    
-    if filter_team != 'All':
-        team_col = 'Team' if 'Team' in filtered_df.columns else 'Equipo'
-        filtered_df = filtered_df[filtered_df[team_col] == filter_team]
-    
-    if filter_number > 0:
-        num_col = 'Number' if 'Number' in filtered_df.columns else 'Número'
-        filtered_df = filtered_df[filtered_df[num_col] == filter_number]
-    
-    if filter_age != 'All':
-        age_col = 'Age' if 'Age' in filtered_df.columns else 'Edad'
-        filtered_df = filtered_df[filtered_df[age_col] == filter_age]
-    
-    if filter_mp_min > 0 and 'MP' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['MP'] >= filter_mp_min]
-    
-    if filter_mst_min > 0 and 'MSt' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['MSt'] >= filter_mst_min]
-    
-    if filter_msub_min > 0 and 'MSub' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['MSub'] >= filter_msub_min]
-    
-    if filter_goals_min > 0:
-        goals_col = 'Goals' if 'Goals' in filtered_df.columns else 'Goles'
-        if goals_col in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df[goals_col] >= filter_goals_min]
-    
-    if filter_cards:
-        if 'Yellow Cards' in filtered_df.columns and 'Red Cards' in filtered_df.columns:
-            filtered_df = filtered_df[(filtered_df['Yellow Cards'] > 0) | (filtered_df['Red Cards'] > 0)]
-    
-    if filter_mp_u17_min > 0 and 'MP U17' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['MP U17'] >= filter_mp_u17_min]
-    
-    if filter_mp_u18_min > 0 and 'MP U18' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['MP U18'] >= filter_mp_u18_min]
-    
-    # Display results
+    # Main content
     st.markdown("---")
-    st.markdown(f"<h4 style='color: #1a2332;'>📄 Showing {len(filtered_df)} players</h4>", unsafe_allow_html=True)
+    
+    # Results count
+    total_original = len(df_original)
+    total_filtered = len(filtered_df)
+    st.markdown(f"<h4 style='color: #1a2332;'>📄 Showing {total_filtered} of {total_original} players</h4>", unsafe_allow_html=True)
     
     if filtered_df.empty:
         st.warning("🗒️ No players found with the selected filters.")
@@ -2040,17 +2211,27 @@ def show_advanced_data_analysis(category):
         # Download buttons
         create_download_buttons(
             filtered_df,
-            filename_base=f"{league_title}_filtered_data",
-            label_prefix="Download Filtered Data"
+            filename_base=f"SAFF_Plus_{league_title}_filtered",
+            label_prefix="Download Data"
         )
         
         st.markdown("---")
         
-        # Display data table
+        # Sort by Goals descending if column exists
+        goals_col = None
+        if 'Goals' in filtered_df.columns:
+            goals_col = 'Goals'
+        elif 'Total_Goals' in filtered_df.columns:
+            goals_col = 'Total_Goals'
+        
+        if goals_col:
+            filtered_df = filtered_df.sort_values(goals_col, ascending=False)
+        
+        # Display data table with pagination
         st.dataframe(
             filtered_df,
             use_container_width=True,
-            height=600
+            height=500
         )
         
         # Statistics summary
@@ -2060,25 +2241,93 @@ def show_advanced_data_analysis(category):
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
         
         with col_s1:
-            if 'MP' in filtered_df.columns:
-                avg_mp = filtered_df['MP'].mean()
-                st.metric("Avg Matches Played", f"{avg_mp:.1f}")
+            goals_col = 'Goals' if 'Goals' in filtered_df.columns else 'Total_Goals' if 'Total_Goals' in filtered_df.columns else None
+            if goals_col:
+                try:
+                    total_goals = int(filtered_df[goals_col].sum())
+                    avg_goals = filtered_df[goals_col].mean()
+                    st.markdown(f"""
+                    <div class='stat-card'>
+                        <div style='font-size: 32px; color: #FFC60A;'>⚽</div>
+                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>{total_goals}</div>
+                        <div style='color: #666;'>Total Goals</div>
+                        <div style='font-size: 12px; color: #999;'>Avg: {avg_goals:.2f}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                except:
+                    st.markdown("""
+                    <div class='stat-card'>
+                        <div style='font-size: 32px; color: #FFC60A;'>⚽</div>
+                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>N/A</div>
+                        <div style='color: #666;'>Total Goals</div>
+                    </div>
+                    """, unsafe_allow_html=True)
         
         with col_s2:
-            goals_col = 'Goals' if 'Goals' in filtered_df.columns else 'Goles'
-            if goals_col in filtered_df.columns:
-                total_goals = filtered_df[goals_col].sum()
-                st.metric("Total Goals", int(total_goals))
+            minutes_col = 'Minutes' if 'Minutes' in filtered_df.columns else 'Total_Minutes' if 'Total_Minutes' in filtered_df.columns else None
+            if minutes_col:
+                try:
+                    avg_minutes = filtered_df[minutes_col].mean()
+                    max_minutes = filtered_df[minutes_col].max()
+                    st.markdown(f"""
+                    <div class='stat-card'>
+                        <div style='font-size: 32px; color: #FFC60A;'>⏱️</div>
+                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>{int(avg_minutes)}</div>
+                        <div style='color: #666;'>Avg Minutes</div>
+                        <div style='font-size: 12px; color: #999;'>Max: {int(max_minutes)}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                except:
+                    st.markdown("""
+                    <div class='stat-card'>
+                        <div style='font-size: 32px; color: #FFC60A;'>⏱️</div>
+                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>N/A</div>
+                        <div style='color: #666;'>Avg Minutes</div>
+                    </div>
+                    """, unsafe_allow_html=True)
         
         with col_s3:
-            if 'Yellow Cards' in filtered_df.columns:
-                total_yellow = filtered_df['Yellow Cards'].sum()
-                st.metric("Total Yellow Cards", int(total_yellow))
+            if 'Cards' in filtered_df.columns:
+                try:
+                    total_cards = int(filtered_df['Cards'].sum())
+                    st.markdown(f"""
+                    <div class='stat-card'>
+                        <div style='font-size: 32px; color: #FFC60A;'>🟨</div>
+                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>{total_cards}</div>
+                        <div style='color: #666;'>Total Cards</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                except:
+                    st.markdown("""
+                    <div class='stat-card'>
+                        <div style='font-size: 32px; color: #FFC60A;'>🟨</div>
+                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>N/A</div>
+                        <div style='color: #666;'>Total Cards</div>
+                    </div>
+                    """, unsafe_allow_html=True)
         
         with col_s4:
-            if 'Red Cards' in filtered_df.columns:
-                total_red = filtered_df['Red Cards'].sum()
-                st.metric("Total Red Cards", int(total_red))
+            mp_col = 'MP' if 'MP' in filtered_df.columns else 'Total_MP' if 'Total_MP' in filtered_df.columns else None
+            if mp_col:
+                try:
+                    total_mp = int(filtered_df[mp_col].sum())
+                    avg_mp = filtered_df[mp_col].mean()
+                    st.markdown(f"""
+                    <div class='stat-card'>
+                        <div style='font-size: 32px; color: #FFC60A;'>⚽</div>
+                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>{total_mp}</div>
+                        <div style='color: #666;'>Total Matches</div>
+                        <div style='font-size: 12px; color: #999;'>Avg: {avg_mp:.1f}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                except:
+                    st.markdown("""
+                    <div class='stat-card'>
+                        <div style='font-size: 32px; color: #FFC60A;'>⚽</div>
+                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>N/A</div>
+                        <div style='color: #666;'>Total Matches</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 # -----------------------------
 # CATEGORY VIEW (with tabs)
