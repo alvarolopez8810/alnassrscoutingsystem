@@ -4531,12 +4531,12 @@ def show_fifa_u20_view():
                                     uploaded_player_photo = st.file_uploader(
                                         "📷 Subir Foto del Jugador",
                                         type=['jpg', 'jpeg', 'png'],
-                                        key=f"upload_photo_{player_name.replace(' ', '_')}",
+                                        key=f"upload_photo_{idx}_{player_name.replace(' ', '_').replace('.', '_')}",
                                         help="Sube una foto del jugador"
                                     )
                                     
                                     if uploaded_player_photo:
-                                        if st.button("💾 Guardar Foto", key=f"save_photo_{player_name.replace(' ', '_')}"):
+                                        if st.button("💾 Guardar Foto", key=f"save_photo_{idx}_{player_name.replace(' ', '_').replace('.', '_')}"):
                                             import os
                                             os.makedirs('player_photos', exist_ok=True)
                                             photo_filename = f"player_photos/{player_name.replace(' ', '_')}.jpg"
@@ -4585,7 +4585,7 @@ def show_fifa_u20_view():
                                         pot_percent = (potential / 6) * 100
                                         
                                         # Unique key for toggle
-                                        toggle_key = f"toggle_report_{player_name.replace(' ', '_')}_{rep_idx}"
+                                        toggle_key = f"toggle_report_{idx}_{player_name.replace(' ', '_').replace('.', '_')}_{rep_idx}"
                                         if toggle_key not in st.session_state:
                                             st.session_state[toggle_key] = False
                                         
