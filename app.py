@@ -427,8 +427,8 @@ def show_home_page():
         f"""
         <div class="header">
             <img src="data:image/png;base64,{base64.b64encode(open('alnassracademy.png', 'rb').read()).decode()}" class="logo">
-            <h1 class="title">AL NASSR ACADEMY</h1>
-            <p class="subtitle">{'Scouting Department' if st.session_state.language == 'en' else 'قسم الكشافة'}</p>
+            <h1 class="title">AL NASSR SCOUTING DEPARTMENT</h1>
+            <p class="subtitle">{'PROFESSIONAL SCOUTING SYSTEM' if st.session_state.language == 'en' else 'نظام الكشافة الاحترافي'}</p>
         </div>
         """, 
         unsafe_allow_html=True
@@ -2352,7 +2352,27 @@ def show_category_view():
             st.rerun()
     
     with col_title:
-        st.markdown(f"<h2 style='text-align: center; color: #002B5B;'>{category}</h2>", unsafe_allow_html=True)
+        # Show U21 SAUDI LEAGUES with logo for U21 category
+        if category == 'U21':
+            try:
+                from PIL import Image
+                import io
+                u21_logo = Image.open('U21logo.png')
+                u21_logo.thumbnail((50, 50))
+                buffered = io.BytesIO()
+                if u21_logo.mode in ('RGBA', 'LA', 'P'):
+                    u21_logo.save(buffered, format="PNG")
+                else:
+                    u21_logo = u21_logo.convert('RGB')
+                    u21_logo.save(buffered, format="PNG")
+                u21_logo_str = base64.b64encode(buffered.getvalue()).decode()
+                logo_html = f'<img src="data:image/png;base64,{u21_logo_str}" style="height:45px; vertical-align:middle; margin-right:15px;">'
+            except:
+                logo_html = ''
+            
+            st.markdown(f"<h2 style='text-align: center; color: #002B5B;'>{logo_html}U21 SAUDI LEAGUES</h2>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<h2 style='text-align: center; color: #002B5B;'>{category}</h2>", unsafe_allow_html=True)
     
     st.markdown("---")
     
@@ -5647,18 +5667,34 @@ def show_calendar_schedule(category):
     </style>
     """, unsafe_allow_html=True)
     
-    # Header
+    # Header with Jawwy logo
+    try:
+        from PIL import Image
+        import io
+        jawwy_logo = Image.open('jawwy.png')
+        jawwy_logo.thumbnail((60, 60))
+        buffered = io.BytesIO()
+        if jawwy_logo.mode in ('RGBA', 'LA', 'P'):
+            jawwy_logo.save(buffered, format="PNG")
+        else:
+            jawwy_logo = jawwy_logo.convert('RGB')
+            jawwy_logo.save(buffered, format="PNG")
+        jawwy_logo_str = base64.b64encode(buffered.getvalue()).decode()
+        jawwy_html = f'<img src="data:image/png;base64,{jawwy_logo_str}" style="height:50px; vertical-align:middle; margin-left:15px;">'
+    except:
+        jawwy_html = ''
+    
     if st.session_state.language == 'en':
         st.markdown(f"""
             <div class="calendar-header">
-                <h2 style="margin: 0; font-size: 28px;">📅 Match Calendar & Schedule</h2>
+                <h2 style="margin: 0; font-size: 28px;">📅 Match Calendar & Schedule {jawwy_html}</h2>
                 <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">Saudi Elite League U-21</p>
             </div>
         """, unsafe_allow_html=True)
     else:
         st.markdown(f"""
             <div class="calendar-header">
-                <h2 style="margin: 0; font-size: 28px;">📅 تقويم ومواعيد المباريات</h2>
+                <h2 style="margin: 0; font-size: 28px;">{jawwy_html} 📅 تقويم ومواعيد المباريات</h2>
                 <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">الدوري السعودي النخبة تحت 21</p>
             </div>
         """, unsafe_allow_html=True)
@@ -5807,21 +5843,82 @@ def show_calendar_schedule(category):
     
     st.markdown("---")
     
-    # Download buttons
-    df_matches = pd.DataFrame(matches)
+    # FILTERS SECTION
+    st.markdown("### 🔍 " + ("Filters" if st.session_state.language == 'en' else "الفلاتر"))
+    
+    # Extract unique values for filters
+    all_weeks = sorted(list(set([m['week'] for m in matches if m['week']])))
+    all_dates = sorted(list(set([m['date'] for m in matches if m['date']])))
+    all_teams = sorted(list(set([m['home_team'] for m in matches] + [m['away_team'] for m in matches])))
+    
+    # Create filter columns
+    col_f1, col_f2, col_f3 = st.columns(3)
+    
+    with col_f1:
+        week_label = "Week" if st.session_state.language == 'en' else "الجولة"
+        all_weeks_label = "All Weeks" if st.session_state.language == 'en' else "كل الجولات"
+        selected_week = st.selectbox(
+            f"📅 {week_label}",
+            [all_weeks_label] + all_weeks,
+            key="filter_week"
+        )
+    
+    with col_f2:
+        date_label = "Date" if st.session_state.language == 'en' else "التاريخ"
+        all_dates_label = "All Dates" if st.session_state.language == 'en' else "كل التواريخ"
+        selected_date = st.selectbox(
+            f"📆 {date_label}",
+            [all_dates_label] + all_dates,
+            key="filter_date"
+        )
+    
+    with col_f3:
+        team_label = "Team" if st.session_state.language == 'en' else "الفريق"
+        all_teams_label = "All Teams" if st.session_state.language == 'en' else "كل الفرق"
+        selected_team = st.selectbox(
+            f"⚽ {team_label}",
+            [all_teams_label] + all_teams,
+            key="filter_team"
+        )
+    
+    # Apply filters (concatenating logic - AND)
+    filtered_matches = matches.copy()
+    
+    # Filter by week
+    if selected_week != (all_weeks_label if st.session_state.language == 'en' else "كل الجولات"):
+        filtered_matches = [m for m in filtered_matches if m['week'] == selected_week]
+    
+    # Filter by date
+    if selected_date != (all_dates_label if st.session_state.language == 'en' else "كل التواريخ"):
+        filtered_matches = [m for m in filtered_matches if m['date'] == selected_date]
+    
+    # Filter by team (home or away)
+    if selected_team != (all_teams_label if st.session_state.language == 'en' else "كل الفرق"):
+        filtered_matches = [m for m in filtered_matches if m['home_team'] == selected_team or m['away_team'] == selected_team]
+    
+    # Show filtered results count
+    if st.session_state.language == 'en':
+        st.info(f"📊 Showing **{len(filtered_matches)}** of **{len(matches)}** matches")
+    else:
+        st.info(f"📊 عرض **{len(filtered_matches)}** من **{len(matches)}** مباراة")
+    
+    st.markdown("---")
+    
+    # Download buttons (for filtered data)
+    df_matches = pd.DataFrame(filtered_matches)
     download_label = "Download Schedule" if st.session_state.language == 'en' else "تحميل الجدول"
     create_download_buttons(
         df_matches,
-        filename_base="U21_calendar",
+        filename_base="U21_calendar_filtered",
         label_prefix=download_label
     )
     
     st.markdown("---")
     
-    # Display matches grouped by date
+    # Display filtered matches grouped by date
     current_date = ""
     
-    for match in matches:
+    for match in filtered_matches:
         # Date header when date changes
         if match['date'] != current_date:
             current_date = match['date']
