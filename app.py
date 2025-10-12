@@ -5,6 +5,7 @@ from PIL import Image
 import io
 import datetime
 import json
+from scraper_saff import scrape_schedule
 
 # Page configuration
 st.set_page_config(
@@ -2355,11 +2356,17 @@ def show_category_view():
     
     st.markdown("---")
     
-    # Tabs
-    if st.session_state.language == 'en':
-        tabs = st.tabs(["📝 CREATE REPORT", "📊 VIEW REPORTS", "🗄️ VIEW DATABASE", "📈 ANALYTICS"])
+    # Tabs - Show CALENDAR only for U21
+    if category == 'U21':
+        if st.session_state.language == 'en':
+            tabs = st.tabs(["📝 CREATE REPORT", "📊 VIEW REPORTS", "🗄️ VIEW DATABASE", "📈 ANALYTICS", "📅 CALENDAR - SCHEDULE"])
+        else:
+            tabs = st.tabs(["📝 إنشاء تقرير", "📊 عرض التقارير", "🗄️ قاعدة البيانات", "📈 التحليلات", "📅 التقويم - الجدول"])
     else:
-        tabs = st.tabs(["📝 إنشاء تقرير", "📊 عرض التقارير", "🗄️ قاعدة البيانات", "📈 التحليلات"])
+        if st.session_state.language == 'en':
+            tabs = st.tabs(["📝 CREATE REPORT", "📊 VIEW REPORTS", "🗄️ VIEW DATABASE", "📈 ANALYTICS"])
+        else:
+            tabs = st.tabs(["📝 إنشاء تقرير", "📊 عرض التقارير", "🗄️ قاعدة البيانات", "📈 التحليلات"])
     
     with tabs[0]:
         show_create_report_form(category)
@@ -2375,6 +2382,11 @@ def show_category_view():
             st.info("📈 Analytics will be implemented soon.")
         else:
             st.info("📈 سيتم تنفيذ التحليلات قريباً.")
+    
+    # Calendar tab - only for U21
+    if category == 'U21':
+        with tabs[4]:
+            show_calendar_schedule(category)
 
 # -----------------------------
 # FIFA WORLD CUP U20 VIEW
@@ -5566,6 +5578,285 @@ def logout():
     st.session_state.user_photo = None
     st.session_state.page = 'home'
     st.rerun()
+
+def show_calendar_schedule(category):
+    """Show calendar and match schedule for U21 category"""
+    
+    # Custom CSS for calendar
+    st.markdown("""
+    <style>
+        .calendar-header {
+            background: linear-gradient(135deg, #002B5B 0%, #004080 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 15px rgba(0,43,91,0.3);
+        }
+        .match-date-header {
+            background: #F9D342;
+            color: #002B5B;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 16px;
+            margin: 25px 0 15px 0;
+            display: inline-block;
+            box-shadow: 0 2px 8px rgba(249,211,66,0.4);
+        }
+        .match-card {
+            background: white;
+            border-left: 4px solid #F9D342;
+            border-radius: 8px;
+            padding: 18px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        .match-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(249,211,66,0.3);
+            border-left-color: #002B5B;
+        }
+        .team-name {
+            font-weight: 600;
+            color: #002B5B;
+            font-size: 15px;
+        }
+        .match-score {
+            font-size: 20px;
+            font-weight: 700;
+            color: #F9D342;
+            padding: 0 15px;
+        }
+        .match-info {
+            color: #666;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+        .week-badge {
+            background: #002B5B;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Header
+    if st.session_state.language == 'en':
+        st.markdown(f"""
+            <div class="calendar-header">
+                <h2 style="margin: 0; font-size: 28px;">📅 Match Calendar & Schedule</h2>
+                <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">Saudi Elite League U-21</p>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+            <div class="calendar-header">
+                <h2 style="margin: 0; font-size: 28px;">📅 تقويم ومواعيد المباريات</h2>
+                <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">الدوري السعودي النخبة تحت 21</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # U21 League ID
+    league_id = 350
+    
+    # Normalización: Nombres del scraper → Nombres completos
+    TEAM_NAMES_NORMALIZED = {
+        'Al Adalah': 'Al-Adalah FC',
+        'Al Ahli': 'Al-Ahli Saudi FC',
+        'Al Bukiryah': 'Al-Bukayriyah FC',
+        'Al Ettifaq': 'Ettifaq FC',
+        'Al Fateh': 'Al-Fateh SC',
+        'Al Fayha': 'Al-Fayha FC',
+        'Al Hazem': 'Al-Hazem FC',
+        'Al Hilal': 'Al-Hilal SFC',
+        'Al Ittihad': 'Al-Ittihad Club',
+        'Al Jabalin': 'Al-Jabalain',
+        'Al Khaleej': 'Khaleej FC',
+        'Al Kholood': 'Al-Kholood Club',
+        'Al Najmah': 'Al-Najmah SC',
+        'Al Nassr': 'Al-Nassr FC',
+        'Al Okhdood': 'Al-Okhdood FC',
+        'Al Orobah': 'Al-Orobah FC',
+        'Al Qadisiyah': 'Al-Qadsiah FC',
+        'Al Raed': 'Al-Raed FC',
+        'Al Riyadh': 'Al-Riyadh SC',
+        'Al Shabab': 'Al-Shabab FC',
+        'Al Taawoun': 'Al-Taawoun FC',
+        'Al Wehda': 'Al-Wehda FC',
+        'Damac': 'Damac FC',
+        'NEOM': 'NEOM Club'
+    }
+
+    # Nombres completos → Archivos de logos
+    TEAM_LOGOS = {
+        'Al-Wehda FC': 'alwehda.png',
+        'Al-Jabalain': 'aljabalain.png',
+        'Al-Raed FC': 'alraed.png',
+        'Al-Orobah FC': 'AlOrobah.png',
+        'Al-Adalah FC': 'aladalahclub.png',
+        'Al-Bukayriyah FC': 'albukiryahfc.png',
+        'Al-Ahli Saudi FC': 'alahli.png',
+        'Al-Nassr FC': 'alnassr.png',
+        'Al-Taawoun FC': 'altaawoun.png',
+        'Al-Shabab FC': 'alshabab.png',
+        'Al-Okhdood FC': 'alokhdood.png',
+        'Al-Riyadh SC': 'alriyadh.png',
+        'Al-Najmah SC': 'alnajma.png',
+        'NEOM Club': 'neom.png',
+        'Al-Kholood Club': 'alkholood.png',
+        'Al-Fateh SC': 'alfateh.png',
+        'Damac FC': 'damac.png',
+        'Al-Hazem FC': 'alhazem.png',
+        'Al-Fayha FC': 'alfayha.png',
+        'Ettifaq FC': 'alettifaq.png',
+        'Al-Hilal SFC': 'alhilal.png',
+        'Al-Qadsiah FC': 'alqadsiah.png',
+        'Khaleej FC': 'alkhaleej.png',
+        'Al-Ittihad Club': 'alittihad.png'
+    }
+    
+    def get_team_logo_html(team_name_from_scraper, size=24):
+        """
+        Obtiene el HTML de un logo de equipo en formato base64
+        Normaliza el nombre del equipo antes de buscar el logo
+        
+        Args:
+            team_name_from_scraper: Nombre del equipo tal como viene del scraper
+            size: Tamaño del logo en pixels
+        
+        Returns:
+            str: HTML del logo o emoji de fallback
+        """
+        # Paso 1: Normalizar el nombre (scraper → nombre completo)
+        normalized_name = TEAM_NAMES_NORMALIZED.get(team_name_from_scraper, team_name_from_scraper)
+        
+        # Paso 2: Obtener el archivo del logo
+        logo_file = TEAM_LOGOS.get(normalized_name, None)
+        
+        if logo_file:
+            try:
+                from PIL import Image
+                import io
+                import base64
+                
+                img = Image.open(logo_file)
+                img.thumbnail((size, size))
+                buffered = io.BytesIO()
+                
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    img.save(buffered, format="PNG")
+                else:
+                    img = img.convert('RGB')
+                    img.save(buffered, format="PNG")
+                
+                img_str = base64.b64encode(buffered.getvalue()).decode()
+                return f'<img src="data:image/png;base64,{img_str}" style="height:{size}px; width:{size}px; object-fit:contain; margin-right:8px; vertical-align:middle;">'
+            except Exception as e:
+                # Si hay error al cargar, devolver emoji
+                return '⚽ '
+        else:
+            # Si no se encuentra el logo, devolver emoji
+            return '⚽ '
+    
+    # Load schedule with cache
+    @st.cache_data(ttl=3600)
+    def load_schedule_cached(lid):
+        return scrape_schedule(lid)
+    
+    # Loading state
+    loading_text = '🔄 Loading schedule...' if st.session_state.language == 'en' else '🔄 جاري تحميل الجدول...'
+    with st.spinner(loading_text):
+        matches = load_schedule_cached(league_id)
+    
+    if not matches:
+        error_text = "❌ Could not load schedule. Please try again later." if st.session_state.language == 'en' else "❌ تعذر تحميل الجدول. يرجى المحاولة لاحقاً."
+        st.error(error_text)
+        return
+    
+    # Stats summary
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        label1 = "🏆 Total Matches" if st.session_state.language == 'en' else "🏆 إجمالي المباريات"
+        st.metric(label1, len(matches))
+    
+    with col2:
+        unique_teams = set()
+        for m in matches:
+            unique_teams.add(m['home_team'])
+            unique_teams.add(m['away_team'])
+        label2 = "⚽ Teams" if st.session_state.language == 'en' else "⚽ الفرق"
+        st.metric(label2, len(unique_teams))
+    
+    with col3:
+        unique_dates = len(set([m['date'] for m in matches if m['date']]))
+        label3 = "📅 Match Days" if st.session_state.language == 'en' else "📅 أيام المباريات"
+        st.metric(label3, unique_dates)
+    
+    with col4:
+        played = sum(1 for m in matches if m['score'] and m['score'] != '-')
+        label4 = "✅ Played" if st.session_state.language == 'en' else "✅ تم لعبها"
+        st.metric(label4, played)
+    
+    st.markdown("---")
+    
+    # Download buttons
+    df_matches = pd.DataFrame(matches)
+    download_label = "Download Schedule" if st.session_state.language == 'en' else "تحميل الجدول"
+    create_download_buttons(
+        df_matches,
+        filename_base="U21_calendar",
+        label_prefix=download_label
+    )
+    
+    st.markdown("---")
+    
+    # Display matches grouped by date
+    current_date = ""
+    
+    for match in matches:
+        # Date header when date changes
+        if match['date'] != current_date:
+            current_date = match['date']
+            st.markdown(f"""
+                <div class="match-date-header">
+                    📅 {current_date}
+                </div>
+            """, unsafe_allow_html=True)
+        
+        # Get team logos (pasando los nombres tal como vienen del scraper)
+        home_logo = get_team_logo_html(match['home_team'], size=28)
+        away_logo = get_team_logo_html(match['away_team'], size=28)
+        
+        # Match card
+        st.markdown(f"""
+            <div class="match-card">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                    <div style="flex: 1; min-width: 350px;">
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            {home_logo}
+                            <span class="team-name">{match['home_team']}</span>
+                            <span class="match-score">{match['score']}</span>
+                            {away_logo}
+                            <span class="team-name">{match['away_team']}</span>
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <span class="week-badge">{match['week']}</span>
+                    </div>
+                </div>
+                <div class="match-info">
+                    ⏰ {match['time']} | 🏟️ {match['stadium']}
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
 # -----------------------------
 # MAIN APPLICATION
