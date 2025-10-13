@@ -4162,13 +4162,69 @@ def show_fifa_u20_view():
                 st.error("⚠️ No se encontraron las columnas necesarias en el Excel. Asegúrate de que existan: País/Country, Position, Nombre/Name")
                 raise ValueError("Columnas necesarias no encontradas")
             
-            # Load match reports from local Excel
-            try:
-                df_reports = pd.read_excel('fifa_u20_player_reports.xlsx')
-            except FileNotFoundError:
-                df_reports = pd.DataFrame()
-            except Exception as e:
-                df_reports = pd.DataFrame()
+           # 🔍 DEBUG SECTION - AÑADIR ESTO
+    st.markdown("---")
+    st.markdown("### 🔍 DEBUG - Diagnóstico del Excel")
+    
+    import os
+    
+    # Check if file exists
+    file_path = 'fifa_u20_player_reports.xlsx'
+    if os.path.exists(file_path):
+        file_size = os.path.getsize(file_path)
+        st.success(f"✅ Archivo encontrado: {file_path} ({file_size} bytes)")
+        
+        try:
+            # Try to load with detailed error handling
+            df_reports_debug = pd.read_excel(file_path)
+            
+            col_d1, col_d2, col_d3 = st.columns(3)
+            with col_d1:
+                st.metric("📊 Total Filas", len(df_reports_debug))
+            with col_d2:
+                st.metric("📋 Columnas", len(df_reports_debug.columns))
+            with col_d3:
+                if len(df_reports_debug) > 0:
+                    st.metric("👥 Scouts", df_reports_debug['Scout'].nunique() if 'Scout' in df_reports_debug.columns else "N/A")
+            
+            # Show columns
+            st.write("**Columnas en el Excel:**")
+            st.code(df_reports_debug.columns.tolist())
+            
+            # Show first rows
+            if len(df_reports_debug) > 0:
+                st.write("**Primeras 5 filas del Excel:**")
+                st.dataframe(df_reports_debug.head())
+                
+                # Check for Juan Gambero specifically
+                if 'Scout' in df_reports_debug.columns:
+                    juan_reports = df_reports_debug[df_reports_debug['Scout'].str.contains('Juan', case=False, na=False)]
+                    st.write(f"**Reportes de Juan Gambero:** {len(juan_reports)}")
+                    if len(juan_reports) > 0:
+                        st.dataframe(juan_reports[['Scout', 'Match', 'Player Name', 'Team']])
+            else:
+                st.warning("⚠️ El Excel está vacío (0 filas)")
+        
+        except Exception as e:
+            st.error(f"❌ Error al leer el Excel: {str(e)}")
+            st.exception(e)
+            df_reports = pd.DataFrame()
+    else:
+        st.error(f"❌ Archivo NO encontrado: {file_path}")
+        st.write("**Archivos en el directorio actual:**")
+        st.code([f for f in os.listdir('.') if f.endswith('.xlsx')])
+        df_reports = pd.DataFrame()
+    
+    st.markdown("---")
+    # FIN DEBUG
+    
+    # Load match reports from local Excel
+    try:
+        df_reports = pd.read_excel('fifa_u20_player_reports.xlsx')
+    except FileNotFoundError:
+        df_reports = pd.DataFrame()
+    except Exception as e:
+        df_reports = pd.DataFrame()
             
             # Try to load individual reports
             try:
