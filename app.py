@@ -1,2416 +1,108 @@
 import streamlit as st
 import pandas as pd
 import base64
-from PIL import Image
 import io
-import datetime
-import json
-from scraper_saff import scrape_schedule
+from datetime import datetime, date
 
 # Page configuration
 st.set_page_config(
-    page_title="Al Nassr Academy - Scouting Department",
-    page_icon="alnassracademy.png",
-    layout="wide"
+    page_title="FIFA U20 World Cup - Scouting Dashboard",
+    page_icon="⚽",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# -----------------------------
-# HELPER FUNCTIONS
-# -----------------------------
-
-def create_download_buttons(df, filename_base, label_prefix="Download"):
-    """
-    Create download buttons for CSV and Excel formats
+def main():
+    # Initialize authentication state
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+    if 'current_user' not in st.session_state:
+        st.session_state.current_user = None
+    if 'user_name' not in st.session_state:
+        st.session_state.user_name = None
+    if 'user_photo' not in st.session_state:
+        st.session_state.user_photo = None
     
-    Args:
-        df: pandas DataFrame to download
-        filename_base: Base name for the file (without extension)
-        label_prefix: Prefix for button labels
-    """
-    if df.empty:
-        st.warning("No data available to download")
-        return
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # CSV Download
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label=f"📥 {label_prefix} CSV",
-            data=csv,
-            file_name=f"{filename_base}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
-    
-    with col2:
-        # Excel Download
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Data')
-        excel_data = output.getvalue()
-        
-        st.download_button(
-            label=f"📥 {label_prefix} EXCEL",
-            data=excel_data,
-            file_name=f"{filename_base}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-
-# Custom CSS for the dashboard
-def apply_custom_css():
-    st.markdown("""
-    <style>
-        /* Main container */
-        .main-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 1rem;
-        }
-        
-        /* Header styling */
-        .header {
-            background-color: #002B5B;
-            color: #F9D342;
-            padding: 2rem;
-            border-radius: 10px;
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-        
-        .logo {
-            max-width: 150px;
-            margin: 0 auto 1rem;
-            display: block;
-        }
-        
-        .title {
-            color: #F9D342;
-            font-size: 2.5rem;
-            font-weight: 800;
-            margin: 0.5rem 0;
-        }
-        
-        .subtitle {
-            color: white;
-            font-size: 1.2rem;
-            margin: 0;
-        }
-        
-        /* Dashboard grid */
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
-            margin-top: 2rem;
-        }
-        
-        /* Dashboard cards */
-        .dashboard-card {
-            background: white;
-            border-radius: 10px;
-            padding: 2rem 1.5rem;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            cursor: pointer;
-            border: 1px solid #e0e0e0;
-        }
-        
-        .dashboard-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-        }
-        
-        .card-icon {
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
-            color: #002B5B;
-        }
-        
-        .card-title {
-            font-size: 1.2rem;
-            font-weight: 600;
-            margin: 0.5rem 0;
-            color: #002B5B;
-        }
-        
-        /* Leagues section */
-        .leagues-section {
-            margin-top: 2rem;
-            padding: 1.5rem;
-            background: #f8f9fa;
-            border-radius: 10px;
-        }
-        
-        /* Responsive design */
-        @media (max-width: 900px) {
-            .dashboard-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-        
-        @media (max-width: 600px) {
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 0.5rem;
-            padding: 0.5rem;
-            background: #f8f9fa;
-            border-radius: 12px;
-            margin-bottom: 1.5rem;
-        }
-        
-        .stTabs [data-baseweb="tab"] {
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            font-weight: 600;
-            color: #002B5B;
-            transition: all 0.2s ease;
-        }
-        
-        .stTabs [aria-selected="true"] {
-            background: #002B5B;
-            color: #F9D342 !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
-# Initialize session state
-if 'language' not in st.session_state:
-    st.session_state.language = 'en'
-if 'page' not in st.session_state:
-    st.session_state.page = 'home'
-if 'category' not in st.session_state:
-    st.session_state.category = None
-
-# -----------------------------
-# CATEGORIES
-# -----------------------------
-CATEGORIES = {
-    'NATIONAL TEAMS': 'NATIONAL TEAMS',
-    'PRO LEAGUE': 'PRO LEAGUE',
-    '1 DIVISION': '1 DIVISION',
-    'U21': 'U21',
-    'U18': 'U18',
-    'U17': 'U17',
-    'U16': 'U16',
-    'U15': 'U15'
-}
-
-# Mapping categories to Excel files
-CATEGORY_FILES = {
-    'U21': 'SaudiLeagueU21.xlsx',
-    'U18': 'SaudiLeagueU18.xlsx',
-    'U17': 'SaudiLeagueU17.xlsx',
-    'U16': 'SaudiLeagueU16.xlsx',
-    'U15': 'SaudiLeagueU15.xlsx'
-}
-
-POSITIONS = [
-    "GK", "RB", "RWB", "CB", "LB", "LWB",
-    "DM/6", "CM/8", "AM/10",
-    "RW/WF", "LW/WF", "ST/9", "SS/9.5"
-]
-
-FOOT = ["Right", "Left", "Both"]
-CONCLUSION = ["SIGN (التوقيع معه)", "MONITOR CLOSELY (متابعة دقيقة)", "DISCARD (الاستبعاد)"]
-
-# Load data functions
-@st.cache_data
-def load_teams_data():
-    try:
-        return pd.read_excel("Saudi_Youth_Leagues.xlsx")
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
-        return pd.DataFrame()
-
-@st.cache_data
-def load_countries():
-    try:
-        df = pd.read_excel("countries.xlsx")
-        # Assuming the countries are in the first column
-        countries = df.iloc[:, 0].dropna().tolist()
-        return sorted(countries)
-    except Exception as e:
-        st.error(f"Error loading countries: {e}")
-        return ["Saudi Arabia"]  # Default fallback
-
-@st.cache_data
-def load_league_data(category):
-    """Load league and team data for a specific category (combines Premier and Division 1)"""
-    try:
-        dfs = []
-        
-        if category in CATEGORY_FILES:
-            # Load Premier League file
-            df_premier = pd.read_excel(CATEGORY_FILES[category])
-            # Standardize column name to 'Team'
-            if 'Equipos' in df_premier.columns:
-                df_premier = df_premier.rename(columns={'Equipos': 'Team'})
-            dfs.append(df_premier)
-            
-            # Try to load Division 1 file if it exists
-            div1_file = CATEGORY_FILES[category].replace('.xlsx', 'Div1.xlsx')
-            try:
-                df_div1 = pd.read_excel(div1_file)
-                # Standardize column name to 'Team'
-                if 'Equipos' in df_div1.columns:
-                    df_div1 = df_div1.rename(columns={'Equipos': 'Team'})
-                dfs.append(df_div1)
-            except FileNotFoundError:
-                pass  # Division 1 file doesn't exist, that's ok
-            
-            # Combine all dataframes
-            if dfs:
-                combined_df = pd.concat(dfs, ignore_index=True)
-                return combined_df
-            else:
-                return pd.DataFrame()
-        else:
-            return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Error loading league data for {category}: {e}")
-        return pd.DataFrame()
-
-def add_player_to_squad(report_data, category):
-    """Add player to Squad database when a report is created"""
-    try:
-        if category == 'U21':
-            import openpyxl
-            from openpyxl.utils.dataframe import dataframe_to_rows
-            
-            # Load existing squad data
-            df_squad = pd.read_excel('SaudiLeagueU21.xlsx', sheet_name='SquadU21')
-            
-            # Rename old columns if needed
-            if 'evaluation' in df_squad.columns:
-                df_squad = df_squad.rename(columns={'evaluation': 'Conclusion'})
-            if 'notes' in df_squad.columns:
-                df_squad = df_squad.rename(columns={'notes': 'Smart Evaluation'})
-            
-            # Check if player already exists (by name and team)
-            player_exists = (
-                (df_squad['Name'] == report_data['Player Name']) & 
-                (df_squad['Team'] == report_data['Team'])
-            ).any()
-            
-            if not player_exists:
-                # Create new player entry
-                new_player = {
-                    'Number': report_data.get('Number', 0),
-                    'Name': report_data['Player Name'],
-                    'Position': report_data['Position'],
-                    'Year of Birth': report_data['Birth Year'],
-                    'Team': report_data['Team'],
-                    'Conclusion': report_data['Conclusion'],
-                    'Smart Evaluation': report_data['Smart Evaluation'],
-                    'KSA Caps': 0
-                }
-                
-                # Add to dataframe
-                df_squad = pd.concat([df_squad, pd.DataFrame([new_player])], ignore_index=True)
-                
-                # Save to Excel
-                book = openpyxl.load_workbook('SaudiLeagueU21.xlsx')
-                if 'SquadU21' in book.sheetnames:
-                    del book['SquadU21']
-                ws = book.create_sheet('SquadU21')
-                for r in dataframe_to_rows(df_squad, index=False, header=True):
-                    ws.append(r)
-                book.save('SaudiLeagueU21.xlsx')
-                book.close()
-                
-                st.cache_data.clear()  # Clear cache to reload data
-                return True
-            else:
-                return False  # Player already exists
-        return False
-    except Exception as e:
-        st.warning(f"Note: Could not add player to Squad database: {e}")
-        return False
-
-def save_report_to_excel(report_data):
-    """Save scout report to Excel file"""
-    try:
-        # Try to load existing reports
-        try:
-            df = pd.read_excel("scouts_reports.xlsx")
-        except FileNotFoundError:
-            # Create new DataFrame if file doesn't exist
-            df = pd.DataFrame()
-        
-        # Append new report
-        new_report = pd.DataFrame([report_data])
-        df = pd.concat([df, new_report], ignore_index=True)
-        
-        # Save to Excel
-        df.to_excel("scouts_reports.xlsx", index=False)
-        
-        # Also add player to Squad database if it's U21
-        added_to_squad = False
-        if 'Category' in report_data and report_data['Category'] == 'U21':
-            added_to_squad = add_player_to_squad(report_data, 'U21')
-            if not added_to_squad:
-                st.info(f"ℹ️ Player '{report_data['Player Name']}' already exists in Squad Database or could not be added.")
-        
-        return {'success': True, 'added_to_squad': added_to_squad}
-    except Exception as e:
-        st.error(f"Error saving report: {e}")
-        return False
-
-@st.cache_data
-def load_reports():
-    """Load all scout reports from Excel"""
-    try:
-        df = pd.read_excel("scouts_reports.xlsx")
-        return df
-    except FileNotFoundError:
-        return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Error loading reports: {e}")
-        return pd.DataFrame()
-
-def show_leagues_section():
-    st.markdown("## Leagues & Teams")
-    df = load_teams_data()
-    
-    if not df.empty:
-        # League filter
-        league_filter = st.selectbox("Select League:", df['League'].unique())
-        filtered_teams = df[df['League'] == league_filter]
-        
-        # Display teams in a table
-        st.dataframe(filtered_teams, use_container_width=True)
-    else:
-        st.warning("No data available. Please check the Excel file.")
-
-# -----------------------------
-# LANGUAGE FUNCTIONS
-# -----------------------------
-def toggle_language():
-    if st.session_state.language == 'en':
-        st.session_state.language = 'ar'
-    else:
+    # Initialize language
+    if 'language' not in st.session_state:
         st.session_state.language = 'en'
-
-def get_league_name(league_key):
-    league_names = {
-        'en': {
-            "Saudi U-18 Premier League": "Saudi U-18 Premier League",
-            "Saudi U-17 Premier League": "Saudi U-17 Premier League", 
-            "Saudi U-16 Premier League": "Saudi U-16 Premier League",
-            "Saudi U-15 Premier League": "Saudi U-15 Premier League",
-            "Saudi Elite League U-21": "Saudi Elite League U-21"
-        },
-        'ar': {
-            "Saudi U-18 Premier League": "الدوري السعودي الممتاز تحت 18",
-            "Saudi U-17 Premier League": "الدوري السعودي الممتاز تحت 17",
-            "Saudi U-16 Premier League": "الدوري السعودي الممتاز تحت 16", 
-            "Saudi U-15 Premier League": "الدوري السعودي الممتاز تحت 15",
-            "Saudi Elite League U-21": "الدوري السعودي النخبة تحت 21"
-        }
-    }
-    return league_names[st.session_state.language].get(league_key, league_key)
-
-# -----------------------------
-# HOME PAGE - MAIN MENU
-# -----------------------------
-def show_home_page():
-    # Header section
-    st.markdown(
-        f"""
-        <div class="header">
-            <img src="data:image/png;base64,{base64.b64encode(open('alnassracademy.png', 'rb').read()).decode()}" class="logo">
-            <h1 class="title">AL NASSR SCOUTING DEPARTMENT</h1>
-            <p class="subtitle">{'PROFESSIONAL SCOUTING SYSTEM' if st.session_state.language == 'en' else 'نظام الكشافة الاحترافي'}</p>
-        </div>
-        """, 
-        unsafe_allow_html=True
-    )
     
-    # Main menu buttons
-    st.markdown(f"<h2 style='text-align: center; color: #002B5B; margin: 2rem 0;'>{'Select an Option' if st.session_state.language == 'en' else 'اختر خياراً'}</h2>", unsafe_allow_html=True)
+    # Initialize page
+    if 'page' not in st.session_state:
+        st.session_state.page = 'home'
     
-    # Custom CSS for home buttons
-    st.markdown("""
-    <style>
-        .home-button-container {
-            text-align: center;
-            margin: 1rem 0;
-        }
-        .home-button-image {
-            height: 120px;
-            margin-bottom: 1rem;
-        }
-        .home-button-text {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #002B5B;
-            margin-top: 0.5rem;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Three buttons layout
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        # Saudi Football button with SAFF logo
-        try:
-            import io
-            from PIL import Image
-            saff_logo = Image.open('saff.png')
-            buffered = io.BytesIO()
-            saff_logo.save(buffered, format="PNG")
-            saff_img_str = base64.b64encode(buffered.getvalue()).decode()
-            
-            st.markdown(
-                f'<div class="home-button-container"><img src="data:image/png;base64,{saff_img_str}" class="home-button-image"></div>',
-                unsafe_allow_html=True
-            )
-        except:
-            st.markdown('<div class="home-button-container">🏆</div>', unsafe_allow_html=True)
-        
-        if st.button("SAUDI FOOTBALL\n\nالكرة السعودية", key="btn_category", use_container_width=True):
-            st.session_state.page = 'categories'
-            st.rerun()
-    
-    with col2:
-        # FIFA U20 World Cup button
-        try:
-            fifa_logo = Image.open('fifau20.png')
-            buffered = io.BytesIO()
-            fifa_logo.save(buffered, format="PNG")
-            fifa_img_str = base64.b64encode(buffered.getvalue()).decode()
-            
-            st.markdown(
-                f'<div class="home-button-container"><img src="data:image/png;base64,{fifa_img_str}" class="home-button-image"></div>',
-                unsafe_allow_html=True
-            )
-        except:
-            st.markdown('<div class="home-button-container">⚽</div>', unsafe_allow_html=True)
-        
-        if st.button("FIFA WORLD CUP U20\n\nكأس العالم تحت 20", key="btn_fifa_u20", use_container_width=True):
-            st.session_state.page = 'fifa_u20'
-            st.rerun()
-    
-    with col3:
-        # Advanced Data Analysis - SAFF+ button
-        try:
-            saffplus_logo = Image.open('saffplus.jpg')
-            buffered = io.BytesIO()
-            saffplus_logo.save(buffered, format="JPEG")
-            saffplus_img_str = base64.b64encode(buffered.getvalue()).decode()
-            
-            st.markdown(
-                f'<div class="home-button-container"><img src="data:image/jpeg;base64,{saffplus_img_str}" class="home-button-image"></div>',
-                unsafe_allow_html=True
-            )
-        except:
-            st.markdown('<div class="home-button-container"><div style="font-size: 80px;">🔬</div></div>', unsafe_allow_html=True)
-        
-        if st.button("ADVANCED DATA\nANALYSIS - SAFF+\n\nتحليل البيانات - SAFF+", key="btn_advanced_data", use_container_width=True):
-            st.session_state.page = 'advanced_data'
-            st.rerun()
-
-# -----------------------------
-# CATEGORIES PAGE
-# -----------------------------
-def show_categories_page():
-    # Header
-    st.markdown(f"<h2 style='text-align: center; color: #002B5B;'>{'Select Category' if st.session_state.language == 'en' else 'اختر الفئة'}</h2>", unsafe_allow_html=True)
-    st.markdown("<div style='margin: 1rem 0;'></div>", unsafe_allow_html=True)
-    
-    # Custom CSS for uniform image sizes
-    st.markdown("""
-    <style>
-        .category-image-container {
-            height: 200px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            margin-bottom: 1rem;
-            border: 2px solid #002B5B;
-            border-radius: 10px;
-            background-color: white;
-        }
-        .category-image-container img {
-            max-height: 180px;
-            max-width: 100%;
-            object-fit: contain;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Category logo mapping - using exact file names
-    category_logos = {
-        'NATIONAL TEAMS': 'NationalTeam.png',
-        'PRO LEAGUE': 'Senior1DIV.png',
-        '1 DIVISION': 'Senior2DIV.png',
-        'U21': 'U21logo.png',
-        'U18': 'U18logo.png',
-        'U17': 'U17logo.png',
-        'U16': 'U16logo.png',
-        'U15': 'U15logo.png'
-    }
-    
-    # Create cards for each category
-    col1, col2, col3, col4 = st.columns(4)
-    
-    categories_list = list(CATEGORIES.keys())
-    
-    for idx, category in enumerate(categories_list):
-        col_idx = idx % 4
-        with [col1, col2, col3, col4][col_idx]:
-            # Try to load category logo
-            logo_file = category_logos.get(category, None)
-            
-            if logo_file:
-                try:
-                    # Load and display image with uniform size
-                    image = Image.open(logo_file)
-                    # Convert image to base64 for HTML display
-                    import io
-                    import base64
-                    buffered = io.BytesIO()
-                    image.save(buffered, format="PNG")
-                    img_str = base64.b64encode(buffered.getvalue()).decode()
-                    
-                    # Display image in a uniform container
-                    st.markdown(
-                        f'<div class="category-image-container"><img src="data:image/png;base64,{img_str}"></div>',
-                        unsafe_allow_html=True
-                    )
-                    if st.button(f"{category}", key=f"cat_{category}", use_container_width=True):
-                        st.session_state.category = category
-                        st.session_state.page = 'category_view'
-                        st.rerun()
-                except FileNotFoundError:
-                    # If logo doesn't exist, use emoji button
-                    if st.button(f"⚽\n\n{category}", key=f"cat_{category}", use_container_width=True):
-                        st.session_state.category = category
-                        st.session_state.page = 'category_view'
-                        st.rerun()
-                except Exception as e:
-                    # If there's any other error, show error and fallback to emoji
-                    st.warning(f"Error loading {logo_file}: {str(e)}")
-                    if st.button(f"⚽\n\n{category}", key=f"cat_{category}", use_container_width=True):
-                        st.session_state.category = category
-                        st.session_state.page = 'category_view'
-                        st.rerun()
-            else:
-                # Fallback to emoji button
-                if st.button(f"⚽\n\n{category}", key=f"cat_{category}", use_container_width=True):
-                    st.session_state.category = category
-                    st.session_state.page = 'category_view'
-                    st.rerun()
-    
-    # Add spacing for remaining categories
-    if len(categories_list) < 8:
-        st.markdown("<div style='margin: 2rem 0;'></div>", unsafe_allow_html=True)
-
-# -----------------------------
-# DATABASE VIEW FUNCTIONS
-# -----------------------------
-@st.cache_data
-def load_squad_data(category):
-    """Load squad data for U21 category from SquadU21 sheet"""
-    try:
-        if category == 'U21':
-            df = pd.read_excel('SaudiLeagueU21.xlsx', sheet_name='SquadU21')
-            
-            # Rename old columns to new ones if they exist
-            if 'evaluation' in df.columns and 'Conclusion' not in df.columns:
-                df = df.rename(columns={'evaluation': 'Conclusion'})
-            if 'notes' in df.columns and 'Smart Evaluation' not in df.columns:
-                df = df.rename(columns={'notes': 'Smart Evaluation'})
-            
-            # Add KSA Caps column if it doesn't exist
-            if 'KSA Caps' not in df.columns:
-                df['KSA Caps'] = 0
-            
-            # Add League column if it doesn't exist and map teams to leagues
-            if 'League' not in df.columns:
-                # Default league mapping for Saudi teams
-                elite_teams = [
-                    'Al-Nassr FC', 'Al-Hilal SFC', 'Al-Ahli Saudi FC', 'Al-Ittihad Club',
-                    'Al-Shabab FC', 'Al-Taawoun FC', 'Al-Fateh SC', 'Al-Fayha FC',
-                    'Al-Raed FC', 'Al-Wehda FC', 'Damac FC', 'Ettifaq FC',
-                    'Al-Khaleej FC', 'Al-Hazem FC', 'Al-Riyadh SC', 'Al-Okhdood FC',
-                    'Al-Qadsiah FC', 'Al-Orobah FC'
-                ]
-                
-                # Map teams to leagues
-                df['League'] = df['Team'].apply(
-                    lambda x: 'Saudi Elite League U-21' if x in elite_teams else 'Saudi First Division U-21'
-                )
-            
-            # Ensure all required columns exist
-            required_cols = ['Number', 'Name', 'Position', 'Year of Birth', 'Team', 'League', 'Conclusion', 'Smart Evaluation', 'KSA Caps']
-            for col in required_cols:
-                if col not in df.columns:
-                    df[col] = '' if col in ['Position', 'Team', 'League', 'Conclusion', 'Smart Evaluation'] else 0
-            return df
-        return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Error loading squad data: {e}")
-        return pd.DataFrame()
-
-def save_squad_data(df, category):
-    """Save squad data back to Excel"""
-    try:
-        if category == 'U21':
-            # Load existing workbook
-            import openpyxl
-            from openpyxl.utils.dataframe import dataframe_to_rows
-            
-            # Load the existing workbook
-            book = openpyxl.load_workbook('SaudiLeagueU21.xlsx')
-            
-            # Remove the SquadU21 sheet if it exists
-            if 'SquadU21' in book.sheetnames:
-                del book['SquadU21']
-            
-            # Create a new sheet
-            ws = book.create_sheet('SquadU21')
-            
-            # Write the dataframe to the sheet
-            for r in dataframe_to_rows(df, index=False, header=True):
-                ws.append(r)
-            
-            # Save the workbook
-            book.save('SaudiLeagueU21.xlsx')
-            book.close()
-            
-            st.success("✅ Data saved successfully!")
-            st.cache_data.clear()
-            return True
-    except Exception as e:
-        st.error(f"Error saving data: {e}")
-        return False
-    return False
-
-def show_create_report_form(category):
-    """Show form to create match reports for Saudi Football categories - Smart version"""
-    
-    # Al Nassr FC Branded CSS
-    st.markdown("""
-    <style>
-        /* Al Nassr Brand Colors */
-        :root {
-            --navy: #1a2332;
-            --gold: #FFC60A;
-            --gold-light: #FFD700;
-            --success: #4CAF50;
-            --bg-light: #f8f9fa;
-            --border: #e0e0e0;
-        }
-        
-        /* Sliders - Gold instead of Red */
-        .stSlider > div > div > div > div {
-            background: linear-gradient(90deg, var(--gold) 0%, var(--gold-light) 100%) !important;
-        }
-        .stSlider > div > div > div > div > div {
-            background-color: var(--gold) !important;
-            border: 3px solid var(--navy) !important;
-            box-shadow: 0 0 10px rgba(255, 198, 10, 0.5) !important;
-        }
-        .stSlider > div > div > div {
-            background-color: var(--border) !important;
-        }
-        
-        /* Input fields - Gold focus */
-        .stTextInput > div > div > input:focus,
-        .stSelectbox > div > div > div:focus,
-        .stTextArea > div > div > textarea:focus,
-        .stNumberInput > div > div > input:focus {
-            border-color: var(--gold) !important;
-            box-shadow: 0 0 0 0.2rem rgba(255, 198, 10, 0.25) !important;
-        }
-        
-        /* Textarea special styling */
-        .stTextArea > div > div > textarea {
-            border-left: 4px solid var(--gold) !important;
-            background-color: var(--bg-light) !important;
-        }
-        
-        /* Buttons - Gold primary */
-        .stButton > button[kind="primary"] {
-            background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 100%) !important;
-            color: var(--navy) !important;
-            font-weight: 700 !important;
-            font-size: 18px !important;
-            height: 60px !important;
-            border: none !important;
-            border-radius: 12px !important;
-            box-shadow: 0 4px 15px rgba(255, 198, 10, 0.4) !important;
-            text-transform: uppercase !important;
-            letter-spacing: 1px !important;
-        }
-        .stButton > button[kind="primary"]:hover {
-            transform: translateY(-3px) !important;
-            box-shadow: 0 6px 20px rgba(255, 198, 10, 0.6) !important;
-        }
-        
-        /* Section headers */
-        .section-header {
-            background: var(--navy);
-            color: white;
-            padding: 15px 20px;
-            border-left: 6px solid var(--gold);
-            border-radius: 8px 8px 0 0;
-            margin: 20px 0 10px 0;
-            font-size: 18px;
-            font-weight: 700;
-        }
-        
-        /* Success message styling */
-        .success-message {
-            background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%);
-            border-left: 4px solid var(--success);
-            padding: 12px 16px;
-            border-radius: 8px;
-            color: var(--success);
-            font-weight: 600;
-            margin: 10px 0;
-        }
-        
-        /* Form container */
-        .form-container {
-            background: white;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            margin-bottom: 20px;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Header with Logo
-    col_logo, col_title, col_refresh = st.columns([1, 6, 2])
-    
-    with col_logo:
-        try:
-            st.image('alnassr.png', width=60)
-        except:
-            st.markdown("<div style='font-size: 60px;'>⚽</div>", unsafe_allow_html=True)
-    
-    with col_title:
-        st.markdown("<h2 style='color: #1a2332; margin-top: 10px;'>Create Match Report</h2>", unsafe_allow_html=True)
-    
-    with col_refresh:
-        if st.button("🔄 Clear Cache", help="Reload database"):
-            st.cache_data.clear()
-            st.rerun()
-    
-    # Load squad database
-    df_squad = load_squad_data(category)
-    
-    if df_squad.empty:
-        st.error("⚠️ No squad data available. Please check the database.")
+    # Check authentication
+    if not st.session_state.authenticated:
+        show_login_page()
         return
     
-    # Initialize session state for player creation
-    if 'show_create_player' not in st.session_state:
-        st.session_state.show_create_player = False
+    # Apply styling
+    apply_custom_css()
     
-    # Match Information Section
-    st.markdown("<div class='section-header'>🏟️ Match Information</div>", unsafe_allow_html=True)
-    st.markdown("<div class='form-container'>", unsafe_allow_html=True)
-    col_m1, col_m2 = st.columns(2)
-    
-    with col_m1:
-        match_date = st.date_input("📅 Match Date")
-    
-    with col_m2:
-        scout_name = st.text_input("👤 Scout Name", placeholder="Your name")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Player Selection Section
-    st.markdown("<div class='section-header'>👕 Player Selection (Smart Database)</div>", unsafe_allow_html=True)
-    st.markdown("<div class='form-container'>", unsafe_allow_html=True)
-    
-    # Step 1: Select League
-    leagues = sorted(df_squad['League'].dropna().unique().tolist())
-    selected_league = st.selectbox(
-        "🏆 Select League",
-        leagues,
-        help="First, select the league"
-    )
-    
-    # Get teams for match and player selection
-    df_league = df_squad[df_squad['League'] == selected_league]
-    teams_in_league = sorted(df_league['Team'].dropna().unique().tolist())
-    
-    # Match Name: Team vs Team
-    st.markdown("**⚽ Match (Team vs Team)**")
-    col_t1, col_vs, col_t2 = st.columns([5, 1, 5])
-    
-    with col_t1:
-        team1 = st.selectbox("Home Team", teams_in_league, key="home_team")
-    
-    with col_vs:
-        st.markdown("<div style='text-align:center;margin-top:28px;font-size:18px;font-weight:bold;color:#1a2332;'>VS</div>", unsafe_allow_html=True)
-    
-    with col_t2:
-        team2 = st.selectbox("Away Team", teams_in_league, key="away_team")
-    
-    match_name = f"{team1} vs {team2}"
-    
-    st.markdown("---")
-    
-    # Step 2: Select player's team
-    selected_team = st.selectbox(
-        "🛡️ Select Player's Team",
-        teams_in_league,
-        help="Select the team of the player you're reporting on"
-    )
-    
-    # Step 3: Filter players by team and show numbers
-    df_team = df_league[df_league['Team'] == selected_team]
-    
-    # Get available numbers
-    available_numbers = sorted([int(n) for n in df_team['Number'].dropna().unique() if str(n).isdigit()])
-    
-    col_num1, col_num2 = st.columns([3, 1])
-    
-    with col_num1:
-        if available_numbers:
-            selected_number = st.selectbox(
-                "🔢 Select Player Number",
-                ['Select...'] + available_numbers,
-                help="Choose the player's number"
-            )
-        else:
-            selected_number = 'Select...'
-            st.warning("No players found in this team")
-    
-    with col_num2:
-        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-        if st.button("➕ Create New Player", help="Add a player not in database"):
-            st.session_state.show_create_player = True
-    
-    # Auto-fill player data or allow manual entry
-    player_name = ""
-    player_position = ""
-    player_birth_year = ""
-    auto_filled = False
-    
-    if selected_number != 'Select...' and selected_number:
-        # Find player data
-        player_data = df_team[df_team['Number'] == selected_number]
-        
-        if not player_data.empty:
-            player_name = player_data.iloc[0]['Name']
-            player_position = player_data.iloc[0]['Position']
-            player_birth_year = player_data.iloc[0]['Year of Birth']
-            auto_filled = True
-            
-            st.markdown(f"<div class='success-message'>✅ <strong>Player Auto-Filled:</strong> {player_name} - {player_position} ({player_birth_year})</div>", unsafe_allow_html=True)
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Player details (editable)
-    st.markdown("<div class='section-header'>ℹ️ Player Details (Editable)</div>", unsafe_allow_html=True)
-    st.markdown("<div class='form-container'>", unsafe_allow_html=True)
-    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
-    
-    with col_p1:
-        player_name_input = st.text_input(
-            "👤 Player Name",
-            value=str(player_name) if player_name else "",
-            placeholder="Player full name"
-        )
-    
-    with col_p2:
-        player_position_input = st.text_input(
-            "📍 Position",
-            value=str(player_position) if player_position else "",
-            placeholder="e.g., CM, ST, CB"
-        )
-    
-    with col_p3:
-        player_birth_year_input = st.text_input(
-            "🎂 Year of Birth",
-            value=str(player_birth_year) if player_birth_year and str(player_birth_year) != 'nan' else "",
-            placeholder="e.g., 2004"
-        )
-    
-    with col_p4:
-        player_nationality = st.selectbox(
-            "🌍 Nationality",
-            ['Saudi Arabia', 'UAE', 'Qatar', 'Bahrain', 'Kuwait', 'Oman', 'Jordan', 'Iraq', 'Other'],
-            index=0
-        )
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Show CREATE PLAYER form if button clicked
-    if st.session_state.show_create_player:
-        st.markdown("---")
-        st.markdown("### ➕ Create New Player")
-        st.info("This player will be added to the database and VIEW DATABASE page")
-        
-        with st.form("create_new_player_form"):
-            col_np1, col_np2 = st.columns(2)
-            
-            with col_np1:
-                new_player_number = st.number_input("Number", min_value=1, max_value=99, value=1)
-                new_player_name = st.text_input("Name", placeholder="Player full name")
-                new_player_position = st.text_input("Position", placeholder="e.g., CM")
-            
-            with col_np2:
-                new_player_birth_year = st.number_input("Year of Birth", min_value=1990, max_value=2015, value=2004)
-                new_player_team = selected_team
-                new_player_league = selected_league
-                st.text_input("Team (auto)", value=new_player_team, disabled=True)
-            
-            col_submit, col_cancel = st.columns(2)
-            
-            with col_submit:
-                submit_new_player = st.form_submit_button("💾 Add to Database", type="primary")
-            
-            with col_cancel:
-                cancel_new_player = st.form_submit_button("❌ Cancel")
-            
-            if submit_new_player:
-                if new_player_name and new_player_position:
-                    try:
-                        # Add to dataframe
-                        new_row = {
-                            'Number': new_player_number,
-                            'Name': new_player_name,
-                            'Position': new_player_position,
-                            'Year of Birth': new_player_birth_year,
-                            'Team': new_player_team,
-                            'League': new_player_league,
-                            'Conclusion': '',
-                            'Smart Evaluation': '',
-                            'KSA Caps': 0
-                        }
-                        
-                        df_squad = pd.concat([df_squad, pd.DataFrame([new_row])], ignore_index=True)
-                        
-                        # Save to Excel
-                        save_squad_data(df_squad, category)
-                        
-                        st.success(f"✅ Player {new_player_name} added successfully!")
-                        st.session_state.show_create_player = False
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Error adding player: {e}")
-                else:
-                    st.error("⚠️ Please fill in Name and Position")
-            
-            if cancel_new_player:
-                st.session_state.show_create_player = False
-                st.rerun()
-    
-    # Evaluation Section
-    st.markdown("<div class='section-header'>📊 Performance Evaluation</div>", unsafe_allow_html=True)
-    st.markdown("<div class='form-container'>", unsafe_allow_html=True)
-    
-    col_e1, col_e2, col_e3 = st.columns(3)
-    
-    with col_e1:
-        performance = st.slider("⚡ Performance Rating", 1.0, 6.0, 3.0, 0.5)
-        st.markdown(f"<div style='text-align: center; color: #FFC60A; font-size: 42px; font-weight: 700; margin-top: -10px;'>{performance}/6</div>", unsafe_allow_html=True)
-    
-    with col_e2:
-        potential = st.slider("🌟 Potential Rating", 1.0, 6.0, 3.0, 0.5)
-        st.markdown(f"<div style='text-align: center; color: #FFC60A; font-size: 42px; font-weight: 700; margin-top: -10px;'>{potential}/6</div>", unsafe_allow_html=True)
-    
-    with col_e3:
-        conclusion = st.selectbox(
-            "✅ Conclusion",
-            ["A - Firmar (Sign)", 
-             "B+ - Seguir para Firmar (Follow to Sign)", 
-             "B - Seguir (Follow)"]
-        )
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Report Section
-    st.markdown("<div class='section-header'>📝 Detailed Report</div>", unsafe_allow_html=True)
-    st.markdown("<div class='form-container'>", unsafe_allow_html=True)
-    
-    report_text = st.text_area(
-        "📝 Write your detailed observations",
-        placeholder="Write detailed observations about the player's performance, strengths, weaknesses, tactical awareness, technical abilities, physical attributes, mental qualities, etc...",
-        height=200
-    )
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Save Report Button
-    if st.button("💾 Save Report", type="primary", use_container_width=True):
-        # Validate required fields
-        if not all([match_name, player_name_input, scout_name, selected_number != 'Select...']):
-            st.error("⚠️ Please fill in all required fields: Match Name, Player Number, Player Name, and Scout Name")
-        else:
-            try:
-                # Create report data with specific columns for saffmatchreports.xlsx
-                report_data = {
-                    'Scout Name': scout_name,
-                    'Player Name': player_name_input,
-                    'Position': player_position_input,
-                    'Year of Birth': player_birth_year_input,
-                    'Nationality': player_nationality,
-                    'League': selected_league,
-                    'Team': selected_team,
-                    'Potential Rating': potential,
-                    'Performance Rating': performance,
-                    'Match Name': match_name,
-                    'Date of the Report': match_date.strftime('%Y-%m-%d'),
-                    'Conclusion': conclusion,
-                    'Report Details': report_text
-                }
-                
-                # Load existing reports from saffmatchreports.xlsx
-                filename = 'saffmatchreports.xlsx'
-                try:
-                    df_existing = pd.read_excel(filename)
-                except FileNotFoundError:
-                    df_existing = pd.DataFrame()
-                
-                # Append new report
-                df_new = pd.DataFrame([report_data])
-                df_combined = pd.concat([df_existing, df_new], ignore_index=True)
-                
-                # Save to saffmatchreports.xlsx
-                df_combined.to_excel(filename, index=False)
-                
-                st.success(f"✅ Report saved successfully to {filename}!")
-                st.balloons()
-                
-                # Reset create player state
-                st.session_state.show_create_player = False
-                
-            except Exception as e:
-                st.error(f"❌ Error saving report: {e}")
-
-def save_player_photo(uploaded_file, player_name):
-    """Save player photo to player_photos directory"""
-    import os
-    import re
-    
-    # Create player_photos directory if it doesn't exist
-    if not os.path.exists('player_photos'):
-        os.makedirs('player_photos')
-    
-    # Sanitize player name for filename
-    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', player_name)
-    file_extension = uploaded_file.name.split('.')[-1]
-    photo_filename = f"{safe_name}.{file_extension}"
-    photo_path = os.path.join('player_photos', photo_filename)
-    
-    # Save the file
-    with open(photo_path, 'wb') as f:
-        f.write(uploaded_file.getbuffer())
-    
-    return photo_filename
-
-def get_player_photo(player_name):
-    """Get player photo filename if it exists"""
-    import os
-    import re
-    
-    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', player_name)
-    player_photos_dir = 'player_photos'
-    
-    if not os.path.exists(player_photos_dir):
-        return None
-    
-    # Check for any file with this player name
-    for file in os.listdir(player_photos_dir):
-        if file.startswith(safe_name):
-            return file
-    
-    return None
-
-def show_category_reports(category):
-    """Show all reports for a specific category from saffmatchreports.xlsx - Enhanced version"""
-    
-    # Team logos mapping
-    TEAM_LOGOS = {
-        'Al-Wehda FC': 'alwehda.png',
-        'Al-Jabalain': 'aljabalain.png',
-        'Al-Raed FC': 'alraed.png',
-        'Al-Orobah FC': 'AlOrobah.png',
-        'Al-Adalah FC': 'aladalahclub.png',
-        'Al-Bukayriyah FC': 'albukiryahfc.png',
-        'Al-Ahli Saudi FC': 'alahli.png',
-        'Al-Nassr FC': 'alnassr.png',
-        'Al-Taawoun FC': 'altaawoun.png',
-        'Al-Shabab FC': 'alshabab.png',
-        'Al-Okhdood FC': 'alokhdood.png',
-        'Al-Riyadh SC': 'alriyadh.png',
-        'Al-Najmah SC': 'alnajma.png',
-        'NEOM Club': 'neom.png',
-        'Al-Kholood Club': 'alkholood.png',
-        'Al-Fateh SC': 'alfateh.png',
-        'Damac FC': 'damac.png',
-        'Al-Hazem FC': 'alhazem.png',
-        'Al-Fayha FC': 'alfayha.png',
-        'Ettifaq FC': 'alettifaq.png',
-        'Al-Hilal SFC': 'alhilal.png',
-        'Al-Qadsiah FC': 'alqadsiah.png',
-        'Khaleej FC': 'alkhaleej.png',
-        'Al-Ittihad Club': 'alittihad.png'
-    }
-    
-    # Enhanced CSS for View Reports
-    st.markdown("""
-    <style>
-        .filter-container {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            border: 2px solid #FFC60A;
-            margin-bottom: 25px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .scout-header {
-            background: linear-gradient(135deg, #1a2332 0%, #2a3342 100%);
-            color: white;
-            padding: 18px 25px;
-            border-left: 8px solid #FFC60A;
-            border-radius: 10px;
-            margin: 30px 0 15px 0;
-            font-size: 20px;
-            font-weight: 700;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        .report-card {
-            background: white;
-            border: 2px solid #e0e0e0;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 15px;
-            transition: all 0.3s ease;
-        }
-        .report-card:hover {
-            border-color: #FFC60A;
-            box-shadow: 0 4px 15px rgba(255, 198, 10, 0.3);
-            transform: translateY(-2px);
-        }
-        .player-photo {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            border: 3px solid #FFC60A;
-            object-fit: cover;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
-        .team-badge {
-            display: inline-flex;
-            align-items: center;
-            background: #1a2332;
-            color: white;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-            margin-right: 8px;
-        }
-        .position-badge {
-            display: inline-block;
-            background: #FFC60A;
-            color: #1a2332;
-            padding: 4px 10px;
-            border-radius: 15px;
-            font-size: 12px;
-            font-weight: 700;
-            margin-right: 8px;
-        }
-        .stat-box {
-            background: #f8f9fa;
-            border-left: 4px solid #FFC60A;
-            padding: 12px;
-            border-radius: 6px;
-            margin: 8px 0;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("### 📊 View Reports")
-    
-    filename = 'saffmatchreports.xlsx'
-    
-    try:
-        df_reports = pd.read_excel(filename)
-        
-        if df_reports.empty:
-            st.info("📋 No reports yet. Create your first report in the CREATE REPORT tab!")
-            return
-        
-        # Enhanced Filters Section
-        st.markdown("<div class='filter-container'>", unsafe_allow_html=True)
-        st.markdown("#### 🔍 Filters")
-        
-        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-        
-        with col_f1:
-            scouts = ['All Scouts'] + sorted(df_reports['Scout Name'].dropna().unique().tolist())
-            filter_scout = st.selectbox("👤 Scout", scouts)
-        
-        with col_f2:
-            leagues = ['All Leagues'] + sorted(df_reports['League'].dropna().unique().tolist())
-            filter_league = st.selectbox("🏆 League", leagues)
-        
-        with col_f3:
-            teams = ['All Teams'] + sorted(df_reports['Team'].dropna().unique().tolist())
-            filter_team = st.selectbox("🛡️ Team", teams)
-        
-        with col_f4:
-            conclusions = ['All'] + ["A - Firmar (Sign)", "B+ - Seguir para Firmar (Follow to Sign)", "B - Seguir (Follow)"]
-            filter_conclusion = st.selectbox("✅ Conclusion", conclusions)
-        
-        col_apply, col_clear = st.columns([1, 1])
-        with col_clear:
-            if st.button("❌ Clear All Filters", use_container_width=True):
-                st.rerun()
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Apply filters
-        filtered_df = df_reports.copy()
-        
-        if filter_scout != 'All Scouts':
-            filtered_df = filtered_df[filtered_df['Scout Name'] == filter_scout]
-        
-        if filter_league != 'All Leagues':
-            filtered_df = filtered_df[filtered_df['League'] == filter_league]
-        
-        if filter_team != 'All Teams':
-            filtered_df = filtered_df[filtered_df['Team'] == filter_team]
-        
-        if filter_conclusion != 'All':
-            filtered_df = filtered_df[filtered_df['Conclusion'] == filter_conclusion]
-        
-        st.markdown(f"<h4 style='color: #1a2332;'>📄 Showing {len(filtered_df)} reports</h4>", unsafe_allow_html=True)
-        
-        # Download buttons
-        if not filtered_df.empty:
-            st.markdown("---")
-            create_download_buttons(
-                filtered_df,
-                filename_base=f"{category}_reports",
-                label_prefix="Download"
-            )
-            st.markdown("---")
-        
-        # Display reports organized by Scout
-        if filtered_df.empty:
-            st.warning("🗒️ No reports found with the selected filters.")
-        else:
-            # Group by Scout
-            scouts_in_reports = filtered_df['Scout Name'].unique()
-            
-            for scout in scouts_in_reports:
-                scout_reports = filtered_df[filtered_df['Scout Name'] == scout]
-                
-                # Scout Header
-                st.markdown(f"<div class='scout-header'>👤 {scout} <span style='color: #FFC60A;'>({len(scout_reports)} reports)</span></div>", unsafe_allow_html=True)
-                
-                # Display each report
-                for idx, report in scout_reports.iterrows():
-                    col_photo, col_upload, col_info = st.columns([1, 1, 4])
-                    
-                    # Check if player has a saved photo
-                    player_photo_file = get_player_photo(report['Player Name'])
-                    
-                    with col_photo:
-                        if player_photo_file:
-                            # Show saved photo
-                            try:
-                                st.image(f"player_photos/{player_photo_file}", width=80, caption=report['Player Name'])
-                            except:
-                                # Fallback to SVG
-                                st.markdown("""
-                                <div style='text-align: center;'>
-                                    <svg class='player-photo' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
-                                        <circle cx='50' cy='50' r='48' fill='#f8f9fa'/>
-                                        <circle cx='50' cy='40' r='15' fill='#1a2332'/>
-                                        <path d='M 25 75 Q 25 55 50 55 Q 75 55 75 75' fill='#1a2332'/>
-                                    </svg>
-                                </div>
-                                """, unsafe_allow_html=True)
-                        else:
-                            # Player photo placeholder with default SVG icon
-                            st.markdown("""
-                            <div style='text-align: center;'>
-                                <svg class='player-photo' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
-                                    <circle cx='50' cy='50' r='48' fill='#f8f9fa'/>
-                                    <circle cx='50' cy='40' r='15' fill='#1a2332'/>
-                                    <path d='M 25 75 Q 25 55 50 55 Q 75 55 75 75' fill='#1a2332'/>
-                                </svg>
-                            </div>
-                            """, unsafe_allow_html=True)
-                    
-                    with col_upload:
-                        # Only show uploader if no photo exists
-                        if not player_photo_file:
-                            # Upload player photo
-                            uploaded_photo = st.file_uploader(
-                                "📸 Upload Photo",
-                                type=['jpg', 'jpeg', 'png'],
-                                key=f"photo_upload_{idx}",
-                                help="Upload player photo (JPG, PNG, max 5MB)"
-                            )
-                            
-                            if uploaded_photo:
-                                # Preview
-                                st.image(uploaded_photo, width=80)
-                                
-                                # Save button
-                                if st.button("💾 Save Photo", key=f"save_photo_{idx}", type="primary"):
-                                    try:
-                                        photo_filename = save_player_photo(uploaded_photo, report['Player Name'])
-                                        st.success(f"✅ Photo saved!")
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"❌ Error: {e}")
-                        else:
-                            # Photo exists, show delete option
-                            if st.button("🗑️ Delete Photo", key=f"delete_photo_{idx}"):
-                                import os
-                                try:
-                                    os.remove(f"player_photos/{player_photo_file}")
-                                    st.success("✅ Photo deleted!")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"❌ Error: {e}")
-                    
-                    with col_info:
-                        # Get team logo
-                        team_logo = TEAM_LOGOS.get(report['Team'], '')
-                        team_logo_html = ''
-                        if team_logo:
-                            try:
-                                import base64
-                                with open(team_logo, 'rb') as f:
-                                    logo_data = base64.b64encode(f.read()).decode()
-                                team_logo_html = f'<img src="data:image/png;base64,{logo_data}" style="height: 20px; vertical-align: middle; margin-right: 6px;">'
-                            except:
-                                team_logo_html = '🛡️ '
-                        else:
-                            team_logo_html = '🛡️ '
-                        
-                        # Player Name and Badges
-                        position_html = f"<span class='position-badge'>{report['Position']}</span>"
-                        team_html = f"<span class='team-badge'>{team_logo_html}{report['Team']}</span>"
-                        
-                        # Nationality (if exists in report, otherwise ask for it)
-                        nationality = report.get('Nationality', 'Unknown')
-                        nationality_icon = ''
-                        if nationality == 'Saudi Arabia' or nationality == 'Unknown':
-                            try:
-                                with open('saff.png', 'rb') as f:
-                                    nat_data = base64.b64encode(f.read()).decode()
-                                nationality_icon = f'<img src="data:image/png;base64,{nat_data}" style="height: 16px; vertical-align: middle; margin-right: 4px;">'
-                            except:
-                                nationality_icon = '🇸🇦 '
-                        
-                        nationality_html = f"<span style='color: #666; font-size: 12px; margin-left: 8px;'>{nationality_icon}{nationality}</span>"
-                        
-                        st.markdown(f"<h3 style='color: #1a2332; margin: 0;'>{report['Player Name']}</h3>", unsafe_allow_html=True)
-                        st.markdown(f"{position_html} {team_html} {nationality_html}", unsafe_allow_html=True)
-                        st.markdown(f"<p style='color: #666; font-size: 13px;'>🎂 {report['Year of Birth']} • ⚽ {report['Match Name']} • 📅 {report['Date of the Report']}</p>", unsafe_allow_html=True)
-                    
-                    st.markdown("---")
-                    
-                    # Stats Section
-                    col_s1, col_s2, col_s3, col_s4 = st.columns(4)
-                    
-                    with col_s1:
-                        perf_pct = (report['Performance Rating'] / 6) * 100
-                        st.markdown(f"""
-                        <div class='stat-box'>
-                            <div style='font-size: 11px; color: #666; font-weight: 600;'>⚡ PERFORMANCE</div>
-                            <div style='font-size: 28px; color: #FFC60A; font-weight: 700;'>{report['Performance Rating']}/6</div>
-                            <div style='background: #e0e0e0; height: 6px; border-radius: 3px; margin-top: 5px;'>
-                                <div style='background: linear-gradient(90deg, #FFC60A, #FFD700); height: 100%; width: {perf_pct}%; border-radius: 3px;'></div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with col_s2:
-                        pot_pct = (report['Potential Rating'] / 6) * 100
-                        st.markdown(f"""
-                        <div class='stat-box'>
-                            <div style='font-size: 11px; color: #666; font-weight: 600;'>🌟 POTENTIAL</div>
-                            <div style='font-size: 28px; color: #FFC60A; font-weight: 700;'>{report['Potential Rating']}/6</div>
-                            <div style='background: #e0e0e0; height: 6px; border-radius: 3px; margin-top: 5px;'>
-                                <div style='background: linear-gradient(90deg, #FFC60A, #FFD700); height: 100%; width: {pot_pct}%; border-radius: 3px;'></div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with col_s3:
-                        conclusion_color = {'A - Firmar (Sign)': '#4CAF50', 'B+ - Seguir para Firmar (Follow to Sign)': '#2196F3', 'B - Seguir (Follow)': '#FF9800'}.get(report['Conclusion'], '#666')
-                        st.markdown(f"""
-                        <div class='stat-box'>
-                            <div style='font-size: 11px; color: #666; font-weight: 600;'>✅ CONCLUSION</div>
-                            <div style='font-size: 14px; color: {conclusion_color}; font-weight: 700; margin-top: 8px;'>{report['Conclusion'].split(' - ')[0]}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with col_s4:
-                        # League icon
-                        league_icon_html = ''
-                        if 'Saudi' in str(report['League']):
-                            try:
-                                with open('jawwy.png', 'rb') as f:
-                                    league_data = base64.b64encode(f.read()).decode()
-                                league_icon_html = f'<img src="data:image/png;base64,{league_data}" style="height: 14px; vertical-align: middle; margin-right: 4px;">'
-                            except:
-                                league_icon_html = '🏆 '
-                        else:
-                            league_icon_html = '🏆 '
-                        
-                        st.markdown(f"""
-                        <div class='stat-box'>
-                            <div style='font-size: 11px; color: #666; font-weight: 600;'>{league_icon_html}LEAGUE</div>
-                            <div style='font-size: 12px; color: #1a2332; font-weight: 600; margin-top: 8px;'>{report['League']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    # Report Details
-                    if report['Report Details'] and str(report['Report Details']) != 'nan':
-                        with st.expander("📝 View Full Report"):
-                            st.markdown(f"<div style='background: #fffef0; padding: 20px; border-left: 4px solid #FFC60A; border-radius: 8px;'>{report['Report Details']}</div>", unsafe_allow_html=True)
-                    
-                    st.markdown("<br>", unsafe_allow_html=True)
-    
-    except FileNotFoundError:
-        st.info(f"📋 No reports found. Create your first report in the CREATE REPORT tab!")
-    except Exception as e:
-        st.error(f"Error loading reports: {e}")
-
-def show_database_view(category):
-    """Show database view for squad management"""
-    if category != 'U21':
-        st.info("📊 Database view is currently available for U21 category only.")
-        return
-    
-    # Team logo mapping
-    TEAM_LOGOS = {
-        'Al-Adalah FC': 'aladalahclub.png',
-        'Al-Ahli Saudi FC': 'alahli.png',
-        'Al-Bukayriyah FC': 'albukiryahfc.png',
-        'Al-Fateh SC': 'alfateh.png',
-        'Al-Fayha FC': 'alfayha.png',
-        'Al-Hazem FC': 'alhazem.png',
-        'Al-Hilal SFC': 'alhilal.png',
-        'Al-Ittihad Club': 'alittihad.png',
-        'Al-Jabalain': 'aljabalain.png',
-        'Al-Kholood Club': 'alkholood.png',
-        'Al-Najmah SC': 'alnajma.png',
-        'Al-Nassr FC': 'alnassr.png',
-        'Al-Okhdood FC': 'alokhdood.png',
-        'Al-Orobah FC': 'AlOrobah.png',
-        'Al-Qadsiah FC': 'alqadsiah.png',
-        'Al-Raed FC': 'alraed.png',
-        'Al-Riyadh SC': 'alriyadh.png',
-        'Al-Shabab FC': 'alshabab.png',
-        'Al-Taawoun FC': 'altaawoun.png',
-        'Al-Wehda FC': 'alwehda.png',
-        'Damac FC': 'damac.png',
-        'Ettifaq FC': 'alettifaq.png',
-        'Khaleej FC': 'alkhaleej.png',
-        'NEOM Club': 'neom.png'
-    }
-    
-    # Conclusion color mapping (matching CREATE REPORT values)
-    CONCLUSION_COLORS = {
-        'SIGN (التوقيع معه)': '#4CAF50',  # Green
-        'MONITOR CLOSELY (متابعة دقيقة)': '#FF9800',  # Orange
-        'DISCARD (الاستبعاد)': '#F44336',  # Red
-        '': '#002B5B'  # Default dark blue
-    }
-    
-    # Load squad data
-    df = load_squad_data(category)
-    
-    if df.empty:
-        st.error("No data available. Please check the Excel file.")
-        return
-    
-    # Custom CSS for professional scouting app style
-    st.markdown("""
-    <style>
-        .metric-card {
-            background-color: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            text-align: center;
-            margin-bottom: 1rem;
-            border: 2px solid #002B5B;
-        }
-        .metric-value {
-            font-size: 2.5rem;
-            font-weight: bold;
-            color: #002B5B;
-        }
-        .metric-label {
-            font-size: 1rem;
-            color: #666;
-            margin-top: 0.5rem;
-        }
-        .team-header {
-            background-color: #002B5B;
-            color: white;
-            padding: 1rem;
-            border-radius: 8px;
-            margin: 1rem 0;
-            font-weight: bold;
-            font-size: 1.2rem;
-        }
-        .stDataFrame {
-            border: 2px solid #002B5B;
-            border-radius: 10px;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Sidebar with counters
+    # Language toggle button in sidebar
     with st.sidebar:
-        st.markdown("### 📊 Statistics")
-        
-        total_teams = df['Team'].nunique()
-        total_players = len(df)
-        
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{total_teams}</div>
-            <div class="metric-label">Total Teams</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{total_players}</div>
-            <div class="metric-label">Total U21 Players</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Main content - Filters
-    col_title, col_refresh = st.columns([3, 1])
-    with col_title:
-        st.markdown("### 🔍 Filters")
-    with col_refresh:
-        if st.button("🔄 Refresh Data", help="Reload data from Excel"):
-            st.cache_data.clear()
-            st.rerun()
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        # League selector (fixed for U21)
-        league = st.selectbox("Select League", ["Saudi Elite League U-21"], key="league_filter")
-    
-    with col2:
-        # Team filter
-        teams = ['All Teams'] + sorted(df['Team'].unique().tolist())
-        selected_team = st.selectbox("Select Team", teams, key="team_filter")
-    
-    with col3:
-        # Search by player name
-        search_name = st.text_input("Search Player", placeholder="Enter player name...", key="search_player")
-    
-    # Filter dataframe
-    filtered_df = df.copy()
-    
-    if selected_team != 'All Teams':
-        filtered_df = filtered_df[filtered_df['Team'] == selected_team]
-    
-    if search_name:
-        filtered_df = filtered_df[filtered_df['Name'].str.contains(search_name, case=False, na=False)]
-    
-    # Display players by team
-    st.markdown("---")
-    st.markdown("### 👥 Squad Database")
-    
-    # Info message about changes
-    st.info("💡 **Tip:** After editing player details, click 'Save All Changes' at the bottom to save to Excel and refresh the view with updated colors and positions.")
-    
-    if filtered_df.empty:
-        st.warning("No players found with the selected filters.")
-        return
-    
-    # Group by team
-    teams_to_display = filtered_df['Team'].unique()
-    
-    # Position options for dropdown (matching CREATE REPORT exactly)
-    POSITION_OPTIONS = ['', 'GK', 'RB', 'RWB', 'CB', 'LB', 'LWB', 'DM/6', 'CM/8', 'AM/10', 'RW/WF', 'LW/WF', 'ST/9', 'SS/9.5']
-    
-    # Conclusion options (matching CREATE REPORT)
-    CONCLUSION_OPTIONS = {
-        '': '',
-        '🟢 SIGN': 'SIGN (التوقيع معه)',
-        '🟠 MONITOR CLOSELY': 'MONITOR CLOSELY (متابعة دقيقة)',
-        '🔴 DISCARD': 'DISCARD (الاستبعاد)'
-    }
-    CONCLUSION_REVERSE = {v: k for k, v in CONCLUSION_OPTIONS.items()}
-    
-    # Store changes
-    changes_made = False
-    
-    for team in sorted(teams_to_display):
-        team_players = filtered_df[filtered_df['Team'] == team]
-        
-        # Team header with logo
-        logo_file = TEAM_LOGOS.get(team, None)
-        if logo_file:
-            try:
-                import io
-                import base64
-                team_logo = Image.open(logo_file)
-                buffered = io.BytesIO()
-                team_logo.save(buffered, format="PNG")
-                img_str = base64.b64encode(buffered.getvalue()).decode()
-                st.markdown(
-                    f'<div class="team-header"><img src="data:image/png;base64,{img_str}" style="height: 40px; vertical-align: middle; margin-right: 10px;">{team} ({len(team_players)} players)</div>',
-                    unsafe_allow_html=True
-                )
-            except:
-                st.markdown(f'<div class="team-header">⚽ {team} ({len(team_players)} players)</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="team-header">⚽ {team} ({len(team_players)} players)</div>', unsafe_allow_html=True)
-        
-        # Create editable table for each player
-        for idx, row in team_players.iterrows():
-            # Get conclusion color
-            conclusion_value = row['Conclusion'] if pd.notna(row['Conclusion']) else ''
-            conclusion_color = CONCLUSION_COLORS.get(conclusion_value, CONCLUSION_COLORS[''])
-            
-            # Player info for banner
-            player_pos = row['Position'] if pd.notna(row['Position']) else 'N/A'
-            player_year = int(row['Year of Birth']) if pd.notna(row['Year of Birth']) else 'N/A'
-            
-            # Create columns for photo and banner
-            col_photo_db, col_banner = st.columns([1, 5])
-            
-            with col_photo_db:
-                # Check if player has a saved photo
-                player_photo_file = get_player_photo(row['Name'])
-                
-                if player_photo_file:
-                    # Show saved photo
-                    st.image(f"player_photos/{player_photo_file}", width=80)
-                    # Delete button
-                    if st.button("🗑️", key=f"delete_db_photo_{idx}", help="Delete photo"):
-                        import os
-                        try:
-                            os.remove(f"player_photos/{player_photo_file}")
-                            st.success("✅ Deleted!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ {e}")
-                else:
-                    # Show SVG placeholder
-                    st.markdown("""
-                    <div style='text-align: center;'>
-                        <svg width='80' height='80' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
-                            <circle cx='50' cy='50' r='48' fill='#f8f9fa' stroke='#FFC60A' stroke-width='3'/>
-                            <circle cx='50' cy='40' r='15' fill='#1a2332'/>
-                            <path d='M 25 75 Q 25 55 50 55 Q 75 55 75 75' fill='#1a2332'/>
-                        </svg>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Upload option (only if no photo exists)
-                    uploaded_db_photo = st.file_uploader(
-                        "📸",
-                        type=['jpg', 'jpeg', 'png'],
-                        key=f"photo_db_{idx}",
-                        help="Upload photo",
-                        label_visibility="collapsed"
-                    )
-                    
-                    if uploaded_db_photo:
-                        if st.button("💾", key=f"save_db_photo_{idx}", help="Save photo"):
-                            try:
-                                save_player_photo(uploaded_db_photo, row['Name'])
-                                st.success("✅")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"❌ {e}")
-            
-            with col_banner:
-                # Custom styled banner
-                st.markdown(
-                    f'<div style="background-color: {conclusion_color}; color: white; padding: 0.8rem 1rem; border-radius: 8px; margin: 0.5rem 0; font-weight: bold; font-size: 1.1rem;">'
-                    f'#{row["Number"]} - {row["Name"]} | Position: {player_pos} | Born: {player_year}'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-            
-            with st.expander("✏️ Edit Player Details", expanded=False):
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    # Editable Number
-                    new_number = st.number_input(
-                        "Number",
-                        min_value=0,
-                        max_value=99,
-                        value=int(row['Number']) if pd.notna(row['Number']) else 0,
-                        key=f"number_{idx}"
-                    )
-                    if new_number != row['Number']:
-                        df.loc[idx, 'Number'] = new_number
-                        changes_made = True
-                    
-                    st.markdown(f"**Name:** {row['Name']}")
-                
-                with col2:
-                    # Editable Position
-                    current_pos = row['Position'] if pd.notna(row['Position']) else ''
-                    new_position = st.selectbox(
-                        "Position",
-                        options=POSITION_OPTIONS,
-                        index=POSITION_OPTIONS.index(current_pos) if current_pos in POSITION_OPTIONS else 0,
-                        key=f"pos_{idx}"
-                    )
-                    if new_position != current_pos:
-                        df.loc[idx, 'Position'] = new_position
-                        changes_made = True
-                
-                with col3:
-                    st.markdown(f"**Year of Birth:** {row['Year of Birth']}")
-                    st.markdown(f"**Age:** {2025 - row['Year of Birth']}")
-                
-                with col4:
-                    # KSA Caps
-                    ksa_caps = st.number_input(
-                        "KSA Caps",
-                        min_value=0,
-                        max_value=200,
-                        value=int(row['KSA Caps']) if pd.notna(row['KSA Caps']) else 0,
-                        key=f"caps_{idx}"
-                    )
-                    if ksa_caps != row['KSA Caps']:
-                        df.loc[idx, 'KSA Caps'] = ksa_caps
-                        changes_made = True
-                
-                # Conclusion and Smart Evaluation
-                col5, col6 = st.columns(2)
-                
-                with col5:
-                    current_conclusion = row['Conclusion'] if pd.notna(row['Conclusion']) else ''
-                    conclusion_display = CONCLUSION_REVERSE.get(current_conclusion, '')
-                    new_conclusion_display = st.selectbox(
-                        "Conclusion",
-                        options=list(CONCLUSION_OPTIONS.keys()),
-                        index=list(CONCLUSION_OPTIONS.keys()).index(conclusion_display) if conclusion_display in CONCLUSION_OPTIONS else 0,
-                        key=f"conclusion_{idx}"
-                    )
-                    new_conclusion = CONCLUSION_OPTIONS[new_conclusion_display]
-                    if new_conclusion != current_conclusion:
-                        df.loc[idx, 'Conclusion'] = new_conclusion
-                        changes_made = True
-                
-                with col6:
-                    # Smart Evaluation
-                    current_smart_eval = row['Smart Evaluation'] if pd.notna(row['Smart Evaluation']) else ''
-                    new_smart_eval = st.text_area(
-                        "Smart Evaluation",
-                        value=current_smart_eval,
-                        key=f"smart_eval_{idx}",
-                        height=100
-                    )
-                    if new_smart_eval != current_smart_eval:
-                        df.loc[idx, 'Smart Evaluation'] = new_smart_eval
-                        changes_made = True
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Save button
-    if changes_made:
-        st.markdown("---")
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            if st.button("💾 Save All Changes", use_container_width=True, type="primary"):
-                if save_squad_data(df, category):
-                    st.rerun()
-
-# -----------------------------
-# ADVANCED DATA ANALYSIS - SAFF+
-# -----------------------------
-def show_advanced_data_analysis(category):
-    """Show advanced data analysis from u18u17.xlsx with dependent filters"""
-    
-    # Header
-    st.markdown("<h2 style='text-align: center; color: #002B5B;'>🔬 ADVANCED DATA ANALYSIS - SAFF+</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #666;'>Analysis of U18 and U17 players data</p>", unsafe_allow_html=True)
-    
-    try:
-        # Load data from u18u17.xlsx
-        df_u18 = pd.read_excel('u18u17.xlsx', sheet_name='Datos Completos U18')
-        df_u17 = pd.read_excel('u18u17.xlsx', sheet_name='Datos Completos U17')
-        df_both = pd.read_excel('u18u17.xlsx', sheet_name='Jugadores en Ambas Ligas')
-    except Exception as e:
-        st.error(f"❌ Error loading data: {e}")
-        st.info("📝 Please ensure u18u17.xlsx file exists with sheets: 'Datos Completos U18', 'Datos Completos U17', 'Jugadores en Ambas Ligas'")
-        return
-    
-    # Function to extract Year of Birth from birthday column
-    def extract_year_of_birth(birthday_value):
-        """Extract year from birthday field - handles various formats"""
-        if pd.isna(birthday_value):
-            return None
-        try:
-            # Convert to string and extract first 4 digits (year)
-            birthday_str = str(birthday_value)
-            # Try to find 4 consecutive digits (year)
-            import re
-            year_match = re.search(r'(\d{4})', birthday_str)
-            if year_match:
-                year = int(year_match.group(1))
-                # Validate year is reasonable (between 1990 and 2015 for youth players)
-                if 1990 <= year <= 2015:
-                    return year
-        except:
-            pass
-        return None
-    
-    # Add Year of Birth column to all dataframes and convert numeric columns
-    for df in [df_u18, df_u17, df_both]:
-        if 'birthday' in df.columns:
-            df['Year of Birth'] = df['birthday'].apply(extract_year_of_birth)
-        
-        # Convert numeric columns to proper types
-        numeric_columns = ['MP', 'MSt', 'MSub', 'Goals', 'Cards', 'Minutes', 
-                          'U18_MP', 'U18_Minutes', 'U18_Goals', 'U18_Cards',
-                          'U17_MP', 'U17_Minutes', 'U17_Goals', 'U17_Cards',
-                          'Total_MP', 'Total_Minutes', 'Total_Goals']
-        for col in numeric_columns:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
-    
-    # For Both Leagues, add position from U18 data
-    if not df_both.empty and 'position' not in df_both.columns:
-        # Create a mapping of player_name to position from U18 data
-        if not df_u18.empty and 'position' in df_u18.columns and 'player_name' in df_u18.columns:
-            position_map = df_u18.set_index('player_name')['position'].to_dict()
-            df_both['position'] = df_both['player_name'].map(position_map)
-    
-    # Custom CSS
-    st.markdown("""
-    <style>
-        .filter-header {
-            background: linear-gradient(135deg, #1a2332 0%, #2a3342 100%);
-            color: white;
-            padding: 15px;
-            border-radius: 8px;
-            border-left: 5px solid #FFC60A;
-            margin-bottom: 20px;
-            font-weight: 600;
-        }
-        .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            border: 2px solid #FFC60A;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Data source selector
-    st.markdown("<div class='filter-header'>🏆 Select Data Source</div>", unsafe_allow_html=True)
-    league_option = st.radio(
-        "",
-        ["U18 League", "U17 League", "Players in Both Leagues"],
-        horizontal=True,
-        label_visibility="collapsed"
-    )
-    
-    # Select appropriate dataframe
-    if league_option == "U18 League":
-        df_original = df_u18.copy()
-        league_title = "U18"
-    elif league_option == "U17 League":
-        df_original = df_u17.copy()
-        league_title = "U17"
-    else:
-        df_original = df_both.copy()
-        league_title = "Both Leagues"
-    
-    if df_original.empty:
-        st.warning("⚠️ No data available")
-        return
-    
-    st.markdown(f"<h3 style='color: #1a2332;'>📄 {league_title} - Player Statistics</h3>", unsafe_allow_html=True)
-    
-    # Initialize session state for filters
-    if 'clear_filters' not in st.session_state:
-        st.session_state.clear_filters = False
-    
-    # Sidebar filters with dependencies
-    with st.sidebar:
-        st.markdown("### 🔍 Filters")
-        st.markdown("---")
-        
-        # Start with full dataset
-        filtered_df = df_original.copy()
-        
-        # League filter
-        if 'league' in filtered_df.columns:
-            leagues_available = ['All'] + sorted(filtered_df['league'].dropna().unique().tolist())
-            selected_league = st.selectbox("🏆 League", leagues_available, key="filter_league")
-            if selected_league != 'All':
-                filtered_df = filtered_df[filtered_df['league'] == selected_league]
-        
-        # Team filter (dependent on League)
-        team_col = None
-        if 'team' in filtered_df.columns:
-            team_col = 'team'
-        elif 'team_U18' in filtered_df.columns:
-            team_col = 'team_U18'
-        
-        if team_col:
-            teams_available = ['All'] + sorted(filtered_df[team_col].dropna().unique().tolist())
-            selected_team = st.selectbox("🛡️ Team", teams_available, key="filter_team")
-            if selected_team != 'All':
-                if team_col == 'team_U18':
-                    # For Both Leagues, filter by either U18 or U17 team
-                    filtered_df = filtered_df[(filtered_df['team_U18'] == selected_team) | (filtered_df['team_U17'] == selected_team)]
-                else:
-                    filtered_df = filtered_df[filtered_df[team_col] == selected_team]
-        
-        # Position filter (dependent on previous filters)
-        if 'position' in filtered_df.columns:
-            positions_available = ['All'] + sorted([p for p in filtered_df['position'].dropna().unique().tolist() if str(p).strip()])
-            selected_position = st.selectbox("🎯 Position", positions_available, key="filter_position")
-            if selected_position != 'All':
-                filtered_df = filtered_df[filtered_df['position'] == selected_position]
-        
-        # Jersey filter (dependent on previous filters)
-        if 'jersey' in filtered_df.columns:
-            jerseys_available = ['All'] + sorted([int(j) for j in filtered_df['jersey'].dropna().unique().tolist() if str(j).strip() and str(j) != 'nan'])
-            if jerseys_available and len(jerseys_available) > 1:
-                selected_jersey = st.selectbox("🔢 Jersey", jerseys_available, key="filter_jersey")
-                if selected_jersey != 'All':
-                    filtered_df = filtered_df[filtered_df['jersey'] == selected_jersey]
-        
-        # Year of Birth filter (dependent on previous filters)
-        if 'Year of Birth' in filtered_df.columns:
-            years_available = sorted([y for y in filtered_df['Year of Birth'].dropna().unique().tolist()], reverse=True)
-            if years_available:
-                years_options = ['All'] + [int(y) for y in years_available]
-                selected_year = st.selectbox("🎂 Year of Birth", years_options, key="filter_year")
-                if selected_year != 'All':
-                    filtered_df = filtered_df[filtered_df['Year of Birth'] == selected_year]
-        
-        # Matches Played (MP) slider
-        mp_col = None
-        if 'MP' in filtered_df.columns:
-            mp_col = 'MP'
-        elif 'Total_MP' in filtered_df.columns:
-            mp_col = 'Total_MP'
-        
-        if mp_col:
-            mp_values = filtered_df[mp_col].dropna()
-            if not mp_values.empty:
-                min_mp = int(mp_values.min())
-                max_mp = int(mp_values.max())
-                if min_mp < max_mp:
-                    selected_mp = st.slider(
-                        "⚽ Matches Played (MP)",
-                        min_value=min_mp,
-                        max_value=max_mp,
-                        value=(min_mp, max_mp),
-                        key="filter_mp"
-                    )
-                    filtered_df = filtered_df[(filtered_df[mp_col] >= selected_mp[0]) & (filtered_df[mp_col] <= selected_mp[1])]
-                    st.caption(f"Range: {selected_mp[0]} - {selected_mp[1]} matches")
-        
-        # Minutes slider
-        minutes_col = None
-        if 'Minutes' in filtered_df.columns:
-            minutes_col = 'Minutes'
-        elif 'Total_Minutes' in filtered_df.columns:
-            minutes_col = 'Total_Minutes'
-        
-        if minutes_col:
-            minutes_values = filtered_df[minutes_col].dropna()
-            if not minutes_values.empty:
-                min_minutes = int(minutes_values.min())
-                max_minutes = int(minutes_values.max())
-                if min_minutes < max_minutes:
-                    selected_minutes = st.slider(
-                        "⏱️ Minutes" if minutes_col != 'Total_Minutes' else "⏱️ Total Minutes",
-                        min_value=min_minutes,
-                        max_value=max_minutes,
-                        value=(min_minutes, max_minutes),
-                        key="filter_minutes"
-                    )
-                    filtered_df = filtered_df[(filtered_df[minutes_col] >= selected_minutes[0]) & (filtered_df[minutes_col] <= selected_minutes[1])]
-                    st.caption(f"Range: {selected_minutes[0]} - {selected_minutes[1]} min")
-        
-        # Additional filters for "Players in Both Leagues"
-        if league_option == "Players in Both Leagues":
-            st.markdown("---")
-            st.markdown("**🔄 Both Leagues Filters**")
-            
-            # U18 MP filter
-            if 'U18_MP' in filtered_df.columns:
-                u18_mp_values = filtered_df['U18_MP'].dropna()
-                if not u18_mp_values.empty:
-                    min_u18_mp = int(u18_mp_values.min())
-                    max_u18_mp = int(u18_mp_values.max())
-                    if min_u18_mp < max_u18_mp:
-                        selected_u18_mp = st.slider(
-                            "⚽ U18 Matches Played",
-                            min_value=min_u18_mp,
-                            max_value=max_u18_mp,
-                            value=(min_u18_mp, max_u18_mp),
-                            key="filter_u18_mp"
-                        )
-                        filtered_df = filtered_df[(filtered_df['U18_MP'] >= selected_u18_mp[0]) & (filtered_df['U18_MP'] <= selected_u18_mp[1])]
-            
-            # U17 MP filter
-            if 'U17_MP' in filtered_df.columns:
-                u17_mp_values = filtered_df['U17_MP'].dropna()
-                if not u17_mp_values.empty:
-                    min_u17_mp = int(u17_mp_values.min())
-                    max_u17_mp = int(u17_mp_values.max())
-                    if min_u17_mp < max_u17_mp:
-                        selected_u17_mp = st.slider(
-                            "⚽ U17 Matches Played",
-                            min_value=min_u17_mp,
-                            max_value=max_u17_mp,
-                            value=(min_u17_mp, max_u17_mp),
-                            key="filter_u17_mp"
-                        )
-                        filtered_df = filtered_df[(filtered_df['U17_MP'] >= selected_u17_mp[0]) & (filtered_df['U17_MP'] <= selected_u17_mp[1])]
-            
-            # U18 Minutes filter
-            if 'U18_Minutes' in filtered_df.columns:
-                u18_min_values = filtered_df['U18_Minutes'].dropna()
-                if not u18_min_values.empty:
-                    min_u18_min = int(u18_min_values.min())
-                    max_u18_min = int(u18_min_values.max())
-                    if min_u18_min < max_u18_min:
-                        selected_u18_min = st.slider(
-                            "⏱️ U18 Minutes",
-                            min_value=min_u18_min,
-                            max_value=max_u18_min,
-                            value=(min_u18_min, max_u18_min),
-                            key="filter_u18_min"
-                        )
-                        filtered_df = filtered_df[(filtered_df['U18_Minutes'] >= selected_u18_min[0]) & (filtered_df['U18_Minutes'] <= selected_u18_min[1])]
-            
-            # U17 Minutes filter
-            if 'U17_Minutes' in filtered_df.columns:
-                u17_min_values = filtered_df['U17_Minutes'].dropna()
-                if not u17_min_values.empty:
-                    min_u17_min = int(u17_min_values.min())
-                    max_u17_min = int(u17_min_values.max())
-                    if min_u17_min < max_u17_min:
-                        selected_u17_min = st.slider(
-                            "⏱️ U17 Minutes",
-                            min_value=min_u17_min,
-                            max_value=max_u17_min,
-                            value=(min_u17_min, max_u17_min),
-                            key="filter_u17_min"
-                        )
-                        filtered_df = filtered_df[(filtered_df['U17_Minutes'] >= selected_u17_min[0]) & (filtered_df['U17_Minutes'] <= selected_u17_min[1])]
-            
-            # U18 Goals filter
-            if 'U18_Goals' in filtered_df.columns:
-                u18_goals_values = filtered_df['U18_Goals'].dropna()
-                if not u18_goals_values.empty:
-                    min_u18_goals = int(u18_goals_values.min())
-                    max_u18_goals = int(u18_goals_values.max())
-                    if min_u18_goals < max_u18_goals:
-                        selected_u18_goals = st.slider(
-                            "⚽ U18 Goals",
-                            min_value=min_u18_goals,
-                            max_value=max_u18_goals,
-                            value=(min_u18_goals, max_u18_goals),
-                            key="filter_u18_goals"
-                        )
-                        filtered_df = filtered_df[(filtered_df['U18_Goals'] >= selected_u18_goals[0]) & (filtered_df['U18_Goals'] <= selected_u18_goals[1])]
-            
-            # U17 Goals filter
-            if 'U17_Goals' in filtered_df.columns:
-                u17_goals_values = filtered_df['U17_Goals'].dropna()
-                if not u17_goals_values.empty:
-                    min_u17_goals = int(u17_goals_values.min())
-                    max_u17_goals = int(u17_goals_values.max())
-                    if min_u17_goals < max_u17_goals:
-                        selected_u17_goals = st.slider(
-                            "⚽ U17 Goals",
-                            min_value=min_u17_goals,
-                            max_value=max_u17_goals,
-                            value=(min_u17_goals, max_u17_goals),
-                            key="filter_u17_goals"
-                        )
-                        filtered_df = filtered_df[(filtered_df['U17_Goals'] >= selected_u17_goals[0]) & (filtered_df['U17_Goals'] <= selected_u17_goals[1])]
-            
-            # Total Goals filter
-            if 'Total_Goals' in filtered_df.columns:
-                total_goals_values = filtered_df['Total_Goals'].dropna()
-                if not total_goals_values.empty:
-                    min_total_goals = int(total_goals_values.min())
-                    max_total_goals = int(total_goals_values.max())
-                    if min_total_goals < max_total_goals:
-                        selected_total_goals = st.slider(
-                            "🎯 Total Goals",
-                            min_value=min_total_goals,
-                            max_value=max_total_goals,
-                            value=(min_total_goals, max_total_goals),
-                            key="filter_total_goals"
-                        )
-                        filtered_df = filtered_df[(filtered_df['Total_Goals'] >= selected_total_goals[0]) & (filtered_df['Total_Goals'] <= selected_total_goals[1])]
-        
-        # Quick search by player name
-        st.markdown("---")
-        player_search = st.text_input("🔍 Quick search (Player name)", placeholder="Type player name...", key="filter_search")
-        if player_search:
-            if 'player_name' in filtered_df.columns:
-                filtered_df = filtered_df[filtered_df['player_name'].str.contains(player_search, case=False, na=False)]
-        
-        # Clear filters button
-        st.markdown("---")
-        if st.button("🗑️ Clear All Filters", use_container_width=True):
-            # Clear all filter keys
-            filter_keys = ['filter_league', 'filter_team', 'filter_position', 'filter_jersey', 'filter_year', 
-                          'filter_mp', 'filter_minutes', 'filter_search',
-                          'filter_u18_mp', 'filter_u17_mp', 'filter_u18_min', 'filter_u17_min',
-                          'filter_u18_goals', 'filter_u17_goals', 'filter_total_goals']
-            for key in filter_keys:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
-    
-    # Main content
-    st.markdown("---")
-    
-    # Results count
-    total_original = len(df_original)
-    total_filtered = len(filtered_df)
-    st.markdown(f"<h4 style='color: #1a2332;'>📄 Showing {total_filtered} of {total_original} players</h4>", unsafe_allow_html=True)
-    
-    if filtered_df.empty:
-        st.warning("🗒️ No players found with the selected filters.")
-    else:
-        # Download buttons
-        create_download_buttons(
-            filtered_df,
-            filename_base=f"SAFF_Plus_{league_title}_filtered",
-            label_prefix="Download Data"
-        )
-        
-        st.markdown("---")
-        
-        # Sort by Goals descending if column exists
-        goals_col = None
-        if 'Goals' in filtered_df.columns:
-            goals_col = 'Goals'
-        elif 'Total_Goals' in filtered_df.columns:
-            goals_col = 'Total_Goals'
-        
-        if goals_col:
-            filtered_df = filtered_df.sort_values(goals_col, ascending=False)
-        
-        # Display data table with pagination
-        st.dataframe(
-            filtered_df,
-            use_container_width=True,
-            height=500
-        )
-        
-        # Statistics summary
-        st.markdown("---")
-        st.markdown("### 📊 Statistics Summary")
-        
-        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
-        
-        with col_s1:
-            goals_col = 'Goals' if 'Goals' in filtered_df.columns else 'Total_Goals' if 'Total_Goals' in filtered_df.columns else None
-            if goals_col:
-                try:
-                    total_goals = int(filtered_df[goals_col].sum())
-                    avg_goals = filtered_df[goals_col].mean()
-                    st.markdown(f"""
-                    <div class='stat-card'>
-                        <div style='font-size: 32px; color: #FFC60A;'>⚽</div>
-                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>{total_goals}</div>
-                        <div style='color: #666;'>Total Goals</div>
-                        <div style='font-size: 12px; color: #999;'>Avg: {avg_goals:.2f}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                except:
-                    st.markdown("""
-                    <div class='stat-card'>
-                        <div style='font-size: 32px; color: #FFC60A;'>⚽</div>
-                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>N/A</div>
-                        <div style='color: #666;'>Total Goals</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        with col_s2:
-            minutes_col = 'Minutes' if 'Minutes' in filtered_df.columns else 'Total_Minutes' if 'Total_Minutes' in filtered_df.columns else None
-            if minutes_col:
-                try:
-                    avg_minutes = filtered_df[minutes_col].mean()
-                    max_minutes = filtered_df[minutes_col].max()
-                    st.markdown(f"""
-                    <div class='stat-card'>
-                        <div style='font-size: 32px; color: #FFC60A;'>⏱️</div>
-                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>{int(avg_minutes)}</div>
-                        <div style='color: #666;'>Avg Minutes</div>
-                        <div style='font-size: 12px; color: #999;'>Max: {int(max_minutes)}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                except:
-                    st.markdown("""
-                    <div class='stat-card'>
-                        <div style='font-size: 32px; color: #FFC60A;'>⏱️</div>
-                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>N/A</div>
-                        <div style='color: #666;'>Avg Minutes</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        with col_s3:
-            if 'Cards' in filtered_df.columns:
-                try:
-                    total_cards = int(filtered_df['Cards'].sum())
-                    st.markdown(f"""
-                    <div class='stat-card'>
-                        <div style='font-size: 32px; color: #FFC60A;'>🟨</div>
-                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>{total_cards}</div>
-                        <div style='color: #666;'>Total Cards</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                except:
-                    st.markdown("""
-                    <div class='stat-card'>
-                        <div style='font-size: 32px; color: #FFC60A;'>🟨</div>
-                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>N/A</div>
-                        <div style='color: #666;'>Total Cards</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        with col_s4:
-            mp_col = 'MP' if 'MP' in filtered_df.columns else 'Total_MP' if 'Total_MP' in filtered_df.columns else None
-            if mp_col:
-                try:
-                    total_mp = int(filtered_df[mp_col].sum())
-                    avg_mp = filtered_df[mp_col].mean()
-                    st.markdown(f"""
-                    <div class='stat-card'>
-                        <div style='font-size: 32px; color: #FFC60A;'>⚽</div>
-                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>{total_mp}</div>
-                        <div style='color: #666;'>Total Matches</div>
-                        <div style='font-size: 12px; color: #999;'>Avg: {avg_mp:.1f}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                except:
-                    st.markdown("""
-                    <div class='stat-card'>
-                        <div style='font-size: 32px; color: #FFC60A;'>⚽</div>
-                        <div style='font-size: 28px; font-weight: bold; color: #002B5B;'>N/A</div>
-                        <div style='color: #666;'>Total Matches</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-# -----------------------------
-# CATEGORY VIEW (with tabs)
-# -----------------------------
-def show_category_view():
-    category = st.session_state.category
-    
-    if not category:
-        st.session_state.page = 'categories'
-        st.rerun()
-        return
-    
-    # Back button and Header
-    col_back, col_title = st.columns([1, 5])
-    
-    with col_back:
-        if st.button("⬅️ Back" if st.session_state.language == 'en' else "⬅️ رجوع", 
-                    key="btn_back_to_categories",
-                    help="Return to categories" if st.session_state.language == 'en' else "العودة إلى الفئات"):
-            st.session_state.page = 'categories'
-            st.rerun()
-    
-    with col_title:
-        # Show U21 SAUDI LEAGUES with logo for U21 category
-        if category == 'U21':
+        # User info at top
+        if st.session_state.user_name:
             try:
                 from PIL import Image
                 import io
-                u21_logo = Image.open('U21logo.png')
-                u21_logo.thumbnail((50, 50))
+                import base64
+                
+                user_img = Image.open(st.session_state.user_photo)
+                user_img.thumbnail((60, 60))
                 buffered = io.BytesIO()
-                if u21_logo.mode in ('RGBA', 'LA', 'P'):
-                    u21_logo.save(buffered, format="PNG")
+                if user_img.mode in ('RGBA', 'LA', 'P'):
+                    user_img.save(buffered, format="PNG")
                 else:
-                    u21_logo = u21_logo.convert('RGB')
-                    u21_logo.save(buffered, format="PNG")
-                u21_logo_str = base64.b64encode(buffered.getvalue()).decode()
-                logo_html = f'<img src="data:image/png;base64,{u21_logo_str}" style="height:45px; vertical-align:middle; margin-right:15px;">'
+                    user_img = user_img.convert('RGB')
+                    user_img.save(buffered, format="PNG")
+                user_img_str = base64.b64encode(buffered.getvalue()).decode()
+                user_photo_html = f'<img src="data:image/png;base64,{user_img_str}" style="width: 50px; height: 50px; border-radius: 50%; border: 3px solid #FFC60A; object-fit: cover;">'
             except:
-                logo_html = ''
+                user_photo_html = '👤'
             
-            st.markdown(f"<h2 style='text-align: center; color: #002B5B;'>{logo_html}U21 SAUDI LEAGUES</h2>", unsafe_allow_html=True)
-        else:
-            st.markdown(f"<h2 style='text-align: center; color: #002B5B;'>{category}</h2>", unsafe_allow_html=True)
+            st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, #1a2332 0%, #2d3e50 100%);
+                    padding: 15px;
+                    border-radius: 10px;
+                    text-align: center;
+                    margin-bottom: 20px;
+                    border: 2px solid #FFC60A;
+                ">
+                    {user_photo_html}
+                    <p style="color: white; margin: 10px 0 0 0; font-weight: 600; font-size: 14px;">{st.session_state.user_name}</p>
+                    <p style="color: #FFC60A; margin: 3px 0 0 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px;">SCOUT</p>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("### Settings / الإعدادات")
+        if st.button("🇸🇦 عربي" if st.session_state.language == 'en' else "🇬🇧 English",
+                    key="lang_toggle",
+                    help="Toggle Language",
+                    use_container_width=True):
+            toggle_language()
+        
+        st.markdown("---")
+        
+        # Navigation
+        if st.session_state.page != 'home':
+            if st.button("🏠 " + ("Home" if st.session_state.language == 'en' else "الرئيسية"), 
+                        key="btn_home",
+                        use_container_width=True):
+                st.session_state.page = 'home'
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Logout button
+        if st.button("🚪 Cerrar Sesión", key="btn_logout", use_container_width=True, type="secondary"):
+            logout()
     
-    st.markdown("---")
-    
-    # Tabs - Show CALENDAR only for U21
-    if category == 'U21':
-        if st.session_state.language == 'en':
-            tabs = st.tabs(["📝 CREATE REPORT", "📊 VIEW REPORTS", "🗄️ VIEW DATABASE", "📈 ANALYTICS", "📅 CALENDAR - SCHEDULE"])
-        else:
-            tabs = st.tabs(["📝 إنشاء تقرير", "📊 عرض التقارير", "🗄️ قاعدة البيانات", "📈 التحليلات", "📅 التقويم - الجدول"])
-    else:
-        if st.session_state.language == 'en':
-            tabs = st.tabs(["📝 CREATE REPORT", "📊 VIEW REPORTS", "🗄️ VIEW DATABASE", "📈 ANALYTICS"])
-        else:
-            tabs = st.tabs(["📝 إنشاء تقرير", "📊 عرض التقارير", "🗄️ قاعدة البيانات", "📈 التحليلات"])
-    
-    with tabs[0]:
-        show_create_report_form(category)
-    
-    with tabs[1]:
-        show_category_reports(category)
-    
-    with tabs[2]:
-        show_database_view(category)
-    
-    with tabs[3]:
-        if st.session_state.language == 'en':
-            st.info("📈 Analytics will be implemented soon.")
-        else:
-            st.info("📈 سيتم تنفيذ التحليلات قريباً.")
-    
-    # Calendar tab - only for U21
-    if category == 'U21':
-        with tabs[4]:
-            show_calendar_schedule(category)
+    # Show FIFA U20 view directly
+    show_fifa_u20_view()
 
-# -----------------------------
-# FIFA WORLD CUP U20 VIEW
-# -----------------------------
+
 def show_fifa_u20_view():
     """Show FIFA U20 World Cup section with 5 tabs"""
     
@@ -2482,26 +174,22 @@ def show_fifa_u20_view():
     
     st.markdown("---")
     
-    # Create 7 tabs
+    # Create 5 tabs
     if st.session_state.language == 'en':
         tabs = st.tabs([
             "📝 CREATE MATCH REPORT",
             "👤 CREATE INDIVIDUAL REPORT",
             "📊 INDIVIDUAL REPORTS",
-            "📅 SCHEDULE - MATCHES",
             "🗄️ PLAYER DATABASE",
-            "📈 MATCH REPORTS",
-            "⚽ CAMPOGRAMAS"
+            "📈 MATCH REPORTS"
         ])
     else:
         tabs = st.tabs([
             "📝 إنشاء تقرير مباراة",
             "👤 إنشاء تقرير فردي",
             "📊 تقارير فردية",
-            "📅 التقويم - المباريات",
             "🗄️ قاعدة بيانات اللاعبين",
-            "📈 تقارير المباريات",
-            "⚽ رسوم الملعب"
+            "📈 تقارير المباريات"
         ])
     
     # Tab 1: CREATE MATCH REPORT - Al Nassr Design
@@ -2600,14 +288,14 @@ def show_fifa_u20_view():
         with col1:
             match_date = st.date_input(
                 "Match Date" if st.session_state.language == 'en' else "تاريخ المباراة",
-                value=datetime.date.today(),
+                value=date.today(),
                 key="fifa_match_date"
             )
         
         with col2:
-            scout_name = st.text_input(
+            scout_name = st.selectbox(
                 "Scout Name" if st.session_state.language == 'en' else "اسم الكشاف",
-                placeholder="Your name" if st.session_state.language == 'en' else "اسمك",
+                options=["Juan Gambero", "Alvaro Lopez", "Rafa Gil"],
                 key="fifa_scout_name"
             )
         
@@ -3236,7 +924,24 @@ def show_fifa_u20_view():
     
     # Tab 2: CREATE INDIVIDUAL REPORT
     with tabs[1]:
-        st.markdown("### 👤 Create Individual Player Report")
+        # Load Al Nassr logo for title
+        try:
+            from PIL import Image
+            import io
+            logo_ind = Image.open('alnassr.png')
+            logo_ind.thumbnail((30, 30))
+            buffered_ind = io.BytesIO()
+            if logo_ind.mode in ('RGBA', 'LA', 'P'):
+                logo_ind.save(buffered_ind, format="PNG")
+            else:
+                logo_ind = logo_ind.convert('RGB')
+                logo_ind.save(buffered_ind, format="PNG")
+            logo_ind_str = base64.b64encode(buffered_ind.getvalue()).decode()
+            logo_ind_html = f'<img src="data:image/png;base64,{logo_ind_str}" style="height:24px; vertical-align:middle; margin-right:8px;">'
+        except:
+            logo_ind_html = '👤'
+        
+        st.markdown(f"### {logo_ind_html} Create Individual Player Report", unsafe_allow_html=True)
         
         # Load player database
         try:
@@ -3314,7 +1019,11 @@ def show_fifa_u20_view():
                     st.markdown("### 📝 Additional Information")
                     
                     # Scout name
-                    scout_name = st.text_input("👤 Scout Name / Nombre del Scout", placeholder="Your name", key="ind_scout_name")
+                    scout_name = st.selectbox(
+                        "👤 Scout Name / Nombre del Scout",
+                        options=["Juan Gambero", "Alvaro Lopez", "Rafa Gil"],
+                        key="ind_scout_name"
+                    )
                     
                     # Agent info
                     col_agent1, col_agent2 = st.columns(2)
@@ -3990,100 +1699,8 @@ def show_fifa_u20_view():
         except Exception as e:
             st.error(f"Error loading reports: {e}")
     
-    # Tab 4: SCHEDULE - MATCHES
+    # Tab 4: PLAYER DATABASE
     with tabs[3]:
-        st.markdown("<h2 style='text-align: center; color: #002B5B;'>📅 SCHEDULE & MATCHES</h2>", unsafe_allow_html=True)
-        
-        try:
-            import json
-            with open('datos_liga_crudos.json', 'r', encoding='utf-8') as f:
-                liga_data = json.load(f)
-            
-            # Tabs for different views
-            schedule_tabs = st.tabs(["📅 Matches", "🏆 Table"])
-            
-            # Tab 1: Matches
-            with schedule_tabs[0]:
-                st.markdown("### ⚽ Matches Calendar")
-                
-                # Get all matches
-                all_matches = liga_data.get('matches', {}).get('allMatches', [])
-                
-                if all_matches:
-                    # Group filter
-                    groups = sorted(set([m.get('group', 'N/A') for m in all_matches if m.get('group')]))
-                    selected_group = st.selectbox("🎯 Group", ['All Groups'] + groups)
-                    
-                    # Filter matches
-                    filtered_matches = all_matches if selected_group == 'All Groups' else [m for m in all_matches if m.get('group') == selected_group]
-                    
-                    st.markdown("---")
-                    
-                    # Display matches
-                    for match in filtered_matches:
-                        home = match.get('home', {})
-                        away = match.get('away', {})
-                        status = match.get('status', {})
-                        
-                        col1, col2, col3 = st.columns([2, 1, 2])
-                        
-                        with col1:
-                            st.markdown(f"**{home.get('name', 'TBD')}**")
-                        with col2:
-                            if status.get('finished'):
-                                st.markdown(f"<div style='text-align:center; font-weight:bold; color:#002B5B;'>{status.get('scoreStr', 'vs')}</div>", unsafe_allow_html=True)
-                            else:
-                                st.markdown(f"<div style='text-align:center;'>vs</div>", unsafe_allow_html=True)
-                        with col3:
-                            st.markdown(f"**{away.get('name', 'TBD')}**")
-                        
-                        # Match details
-                        col_d1, col_d2, col_d3 = st.columns(3)
-                        with col_d1:
-                            st.markdown(f"🏆 Group {match.get('group', 'N/A')}")
-                        with col_d2:
-                            st.markdown(f"📅 {status.get('utcTime', '')[:10]}")
-                        with col_d3:
-                            st.markdown(f"⏰ {status.get('reason', {}).get('short', 'Scheduled')}")
-                        
-                        st.markdown("<hr style='margin: 1rem 0; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
-                else:
-                    st.info("🔍 No matches found")
-            
-            # Tab 2: Table
-            with schedule_tabs[1]:
-                st.markdown("### 🏆 Group Tables")
-                
-                tables = liga_data.get('table', [])
-                
-                for table_data in tables:
-                    if table_data.get('data', {}).get('tables'):
-                        for group_table in table_data['data']['tables']:
-                            group_name = group_table.get('leagueName', 'Group')
-                            st.markdown(f"#### {group_name}")
-                            
-                            table_all = group_table.get('table', {}).get('all', [])
-                            
-                            if table_all:
-                                df_table = pd.DataFrame(table_all)
-                                display_cols = ['name', 'played', 'wins', 'draws', 'losses', 'scoresStr', 'pts']
-                                available_cols = [col for col in display_cols if col in df_table.columns]
-                                
-                                st.dataframe(
-                                    df_table[available_cols].reset_index(drop=True),
-                                    use_container_width=True,
-                                    hide_index=True
-                                )
-                            
-                            st.markdown("---")
-        
-        except FileNotFoundError:
-            st.error("❌ datos_liga_crudos.json not found")
-        except Exception as e:
-            st.error(f"Error loading schedule: {e}")
-    
-    # Tab 5: PLAYER DATABASE
-    with tabs[4]:
         # Load Al Nassr logo for title
         try:
             from PIL import Image
@@ -4161,691 +1778,661 @@ def show_fifa_u20_view():
             if not country_col or not position_col or not name_col:
                 st.error("⚠️ No se encontraron las columnas necesarias en el Excel. Asegúrate de que existan: País/Country, Position, Nombre/Name")
                 raise ValueError("Columnas necesarias no encontradas")
-            
-           # 🔍 DEBUG SECTION - AÑADIR ESTO
-    st.markdown("---")
-    st.markdown("### 🔍 DEBUG - Diagnóstico del Excel")
-    
-    import os
-    
-    # Check if file exists
-    file_path = 'fifa_u20_player_reports.xlsx'
-    if os.path.exists(file_path):
-        file_size = os.path.getsize(file_path)
-        st.success(f"✅ Archivo encontrado: {file_path} ({file_size} bytes)")
-        
-        try:
-            # Try to load with detailed error handling
-            df_reports_debug = pd.read_excel(file_path)
-            
-            col_d1, col_d2, col_d3 = st.columns(3)
-            with col_d1:
-                st.metric("📊 Total Filas", len(df_reports_debug))
-            with col_d2:
-                st.metric("📋 Columnas", len(df_reports_debug.columns))
-            with col_d3:
-                if len(df_reports_debug) > 0:
-                    st.metric("👥 Scouts", df_reports_debug['Scout'].nunique() if 'Scout' in df_reports_debug.columns else "N/A")
-            
-            # Show columns
-            st.write("**Columnas en el Excel:**")
-            st.code(df_reports_debug.columns.tolist())
-            
-            # Show first rows
-            if len(df_reports_debug) > 0:
-                st.write("**Primeras 5 filas del Excel:**")
-                st.dataframe(df_reports_debug.head())
-                
-                # Check for Juan Gambero specifically
-                if 'Scout' in df_reports_debug.columns:
-                    juan_reports = df_reports_debug[df_reports_debug['Scout'].str.contains('Juan', case=False, na=False)]
-                    st.write(f"**Reportes de Juan Gambero:** {len(juan_reports)}")
-                    if len(juan_reports) > 0:
-                        st.dataframe(juan_reports[['Scout', 'Match', 'Player Name', 'Team']])
-            else:
-                st.warning("⚠️ El Excel está vacío (0 filas)")
         
         except Exception as e:
-            st.error(f"❌ Error al leer el Excel: {str(e)}")
-            st.exception(e)
+            st.error(f"❌ Error al cargar datos de jugadores: {str(e)}")
+            df_players = pd.DataFrame()
+            
+        # Load match reports from local Excel
+        try:
+            df_reports = pd.read_excel('fifa_u20_player_reports.xlsx')
+        except FileNotFoundError:
             df_reports = pd.DataFrame()
-    else:
-        st.error(f"❌ Archivo NO encontrado: {file_path}")
-        st.write("**Archivos en el directorio actual:**")
-        st.code([f for f in os.listdir('.') if f.endswith('.xlsx')])
-        df_reports = pd.DataFrame()
-    
-    st.markdown("---")
-    # FIN DEBUG
-    
-    # Load match reports from local Excel
-    try:
-        df_reports = pd.read_excel('fifa_u20_player_reports.xlsx')
-    except FileNotFoundError:
-        df_reports = pd.DataFrame()
-    except Exception as e:
-        df_reports = pd.DataFrame()
-            
-            # Try to load individual reports
-            try:
-                df_individual_reports = pd.read_excel('fifa_u20_individual_reports.xlsx')
-            except FileNotFoundError:
-                df_individual_reports = pd.DataFrame()
-            except Exception as e:
-                df_individual_reports = pd.DataFrame()
-            
-            # Control para mostrar todos los jugadores
-            if 'show_all_players' not in st.session_state:
-                st.session_state.show_all_players = False
-            
-            # Botón para mostrar todos
-            col_btn1, col_btn2 = st.columns([1, 5])
-            with col_btn1:
-                if st.button("👥 Mostrar todos" if not st.session_state.show_all_players else "❌ Ocultar", key="toggle_show_all_players"):
-                    st.session_state.show_all_players = not st.session_state.show_all_players
-                    st.rerun()
-            
-            # Filters
-            st.markdown("---")
-            col_filter1, col_filter2, col_filter3, col_filter4 = st.columns(4)
-            
-            with col_filter1:
-                # Search by player name
-                search_player = st.text_input(
-                    "🔍 Search Player" if st.session_state.language == 'en' else "🔍 ابحث عن لاعب",
-                    placeholder="Enter player name..." if st.session_state.language == 'en' else "أدخل اسم اللاعب...",
-                    key="fifa_u20_search_player"
-                )
-            
-            with col_filter2:
-                # Position filter
-                all_positions = ['All Positions'] + sorted(df_players[position_col].dropna().unique().tolist())
-                selected_position = st.selectbox(
-                    "⚽ Position" if st.session_state.language == 'en' else "⚽ المركز",
-                    all_positions,
-                    key="fifa_u20_position_filter"
-                )
-            
-            with col_filter3:
-                # Country filter
-                all_countries = ['All Teams'] + sorted(df_players[country_col].unique().tolist())
-                selected_country = st.selectbox(
-                    "🌍 Team" if st.session_state.language == 'en' else "🌍 الفريق",
-                    all_countries,
-                    key="fifa_u20_country_filter"
-                )
-            
-            with col_filter4:
-                # Conclusion filter
-                conclusion_options = ['Todas', 'A - Firmar', 'B+ - Seguir para Firmar', 'B - Seguir']
-                selected_conclusion = st.selectbox(
-                    "🎯 Conclusión",
-                    conclusion_options,
-                    key="fifa_u20_conclusion_filter"
-                )
-            
-            # Checkbox para mostrar solo jugadores con informe
-            col_check1, col_check2 = st.columns([2, 4])
-            with col_check1:
-                only_with_reports = st.checkbox(
-                    "📊 Mostrar solo jugadores con informe",
-                    value=False,
-                    key="only_with_reports_filter"
-                )
-            
-            # Filter dataframe
-            filtered_df = df_players.copy()
-            
-            if selected_country != 'All Teams':
-                filtered_df = filtered_df[filtered_df[country_col] == selected_country]
-            
-            if selected_position != 'All Positions':
-                filtered_df = filtered_df[filtered_df[position_col] == selected_position]
-            
-            if search_player:
-                filtered_df = filtered_df[filtered_df[name_col].str.contains(search_player, case=False, na=False)]
-            
-            # Filtrar por jugadores con informe
-            if only_with_reports:
-                players_with_any_report = []
-                
-                # Añadir jugadores con match reports
-                if not df_reports.empty:
-                    players_with_any_report.extend(df_reports['Player Name'].unique().tolist())
-                
-                # Añadir jugadores con individual reports
-                if not df_individual_reports.empty:
-                    players_with_any_report.extend(df_individual_reports['Player'].unique().tolist())
-                
-                # Filtrar solo jugadores con informe
-                if players_with_any_report:
-                    filtered_df = filtered_df[filtered_df[name_col].isin(players_with_any_report)]
-                else:
-                    filtered_df = pd.DataFrame()  # No hay jugadores con informe
-            
-            # Filtrar por conclusión
-            if selected_conclusion != 'Todas':
-                players_with_conclusion = []
-                
-                # Buscar en match reports
-                if not df_reports.empty:
-                    if selected_conclusion == 'A - Firmar':
-                        conclusion_reports = df_reports[df_reports['Conclusion'].str.contains('A -|A-|A ', case=False, na=False, regex=True)]
-                    elif selected_conclusion == 'B+ - Seguir para Firmar':
-                        conclusion_reports = df_reports[df_reports['Conclusion'].str.contains(r'B\+', case=False, na=False, regex=True)]
-                    elif selected_conclusion == 'B - Seguir':
-                        conclusion_reports = df_reports[
-                            (df_reports['Conclusion'].str.contains('B -|B-|B ', case=False, na=False, regex=True)) &
-                            (~df_reports['Conclusion'].str.contains(r'B\+', case=False, na=False, regex=True))
-                        ]
-                    else:
-                        conclusion_reports = pd.DataFrame()
-                    
-                    if not conclusion_reports.empty:
-                        players_with_conclusion.extend(conclusion_reports['Player Name'].unique().tolist())
-                
-                # Buscar en individual reports
-                if not df_individual_reports.empty:
-                    if selected_conclusion == 'A - Firmar':
-                        conclusion_ind_reports = df_individual_reports[df_individual_reports['Conclusion'].str.contains('A -|A-|A ', case=False, na=False, regex=True)]
-                    elif selected_conclusion == 'B+ - Seguir para Firmar':
-                        conclusion_ind_reports = df_individual_reports[df_individual_reports['Conclusion'].str.contains(r'B\+', case=False, na=False, regex=True)]
-                    elif selected_conclusion == 'B - Seguir':
-                        conclusion_ind_reports = df_individual_reports[
-                            (df_individual_reports['Conclusion'].str.contains('B -|B-|B ', case=False, na=False, regex=True)) &
-                            (~df_individual_reports['Conclusion'].str.contains(r'B\+', case=False, na=False, regex=True))
-                        ]
-                    else:
-                        conclusion_ind_reports = pd.DataFrame()
-                    
-                    if not conclusion_ind_reports.empty:
-                        players_with_conclusion.extend(conclusion_ind_reports['Player'].unique().tolist())
-                
-                # Filtrar solo jugadores con esa conclusión
-                if players_with_conclusion:
-                    filtered_df = filtered_df[filtered_df[name_col].isin(players_with_conclusion)]
-                else:
-                    filtered_df = pd.DataFrame()  # No hay jugadores con esa conclusión
-            
-            # Si no se ha activado "Mostrar todos" y no hay filtros activos, no mostrar nada
-            has_active_filters = (
-                search_player or 
-                selected_position != 'All Positions' or 
-                selected_country != 'All Teams' or
-                only_with_reports or
-                selected_conclusion != 'Todas'
+        except Exception as e:
+            df_reports = pd.DataFrame()
+        
+        # Try to load individual reports
+        try:
+            df_individual_reports = pd.read_excel('fifa_u20_individual_reports.xlsx')
+        except FileNotFoundError:
+            df_individual_reports = pd.DataFrame()
+        except Exception as e:
+            df_individual_reports = pd.DataFrame()
+        
+        # Control para mostrar todos los jugadores
+        if 'show_all_players' not in st.session_state:
+            st.session_state.show_all_players = False
+        
+        # Botón para mostrar todos
+        col_btn1, col_btn2 = st.columns([1, 5])
+        with col_btn1:
+            if st.button("👥 Mostrar todos" if not st.session_state.show_all_players else "❌ Ocultar", key="toggle_show_all_players"):
+                st.session_state.show_all_players = not st.session_state.show_all_players
+                st.rerun()
+        
+        # Filters
+        st.markdown("---")
+        col_filter1, col_filter2, col_filter3, col_filter4 = st.columns(4)
+        
+        with col_filter1:
+            # Search by player name
+            search_player = st.text_input(
+                "🔍 Search Player" if st.session_state.language == 'en' else "🔍 ابحث عن لاعب",
+                placeholder="Enter player name..." if st.session_state.language == 'en' else "أدخل اسم اللاعب...",
+                key="fifa_u20_search_player"
             )
+        
+        with col_filter2:
+            # Position filter
+            all_positions = ['All Positions'] + sorted(df_players[position_col].dropna().unique().tolist())
+            selected_position = st.selectbox(
+                "⚽ Position" if st.session_state.language == 'en' else "⚽ المركز",
+                all_positions,
+                key="fifa_u20_position_filter"
+            )
+        
+        with col_filter3:
+            # Country filter
+            all_countries = ['All Teams'] + sorted(df_players[country_col].unique().tolist())
+            selected_country = st.selectbox(
+                "🌍 Team" if st.session_state.language == 'en' else "🌍 الفريق",
+                all_countries,
+                key="fifa_u20_country_filter"
+            )
+        
+        with col_filter4:
+            # Conclusion filter
+            conclusion_options = ['Todas', 'A - Firmar', 'B+ - Seguir para Firmar', 'B - Seguir']
+            selected_conclusion = st.selectbox(
+                "🎯 Conclusión",
+                conclusion_options,
+                key="fifa_u20_conclusion_filter"
+            )
+        
+        # Checkbox para mostrar solo jugadores con informe
+        col_check1, col_check2 = st.columns([2, 4])
+        with col_check1:
+            only_with_reports = st.checkbox(
+                "📊 Mostrar solo jugadores con informe",
+                value=False,
+                key="only_with_reports_filter"
+            )
+        
+        # Filter dataframe
+        filtered_df = df_players.copy()
+        
+        if selected_country != 'All Teams':
+            filtered_df = filtered_df[filtered_df[country_col] == selected_country]
+        
+        if selected_position != 'All Positions':
+            filtered_df = filtered_df[filtered_df[position_col] == selected_position]
+        
+        if search_player:
+            filtered_df = filtered_df[filtered_df[name_col].str.contains(search_player, case=False, na=False)]
+        
+        # Filtrar por jugadores con informe
+        if only_with_reports:
+            players_with_any_report = []
             
-            if not st.session_state.show_all_players and not has_active_filters:
-                filtered_df = pd.DataFrame()  # No mostrar nada
+            # Añadir jugadores con match reports
+            if not df_reports.empty:
+                players_with_any_report.extend(df_reports['Player Name'].unique().tolist())
             
-            st.markdown("---")
+            # Añadir jugadores con individual reports
+            if not df_individual_reports.empty:
+                players_with_any_report.extend(df_individual_reports['Player'].unique().tolist())
             
-            # Display stats
-            col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
-            with col_stat1:
-                st.metric("👥 Total Players", len(filtered_df))
-            with col_stat2:
-                st.metric("🌍 Teams", filtered_df[country_col].nunique() if not filtered_df.empty else 0)
-            with col_stat3:
-                # Count players with match reports
-                if not df_reports.empty and not filtered_df.empty:
-                    players_with_match_reports = filtered_df[name_col].isin(df_reports['Player Name']).sum()
-                    st.metric("⚽ Match Reports", players_with_match_reports)
-                else:
-                    st.metric("⚽ Match Reports", 0)
-            with col_stat4:
-                # Count players with individual reports
-                if not df_individual_reports.empty and not filtered_df.empty:
-                    players_with_individual_reports = filtered_df[name_col].isin(df_individual_reports['Player']).sum()
-                    st.metric("📋 Individual Reports", players_with_individual_reports)
-                else:
-                    st.metric("📋 Individual Reports", 0)
-            
-            st.markdown("---")
-            
-            # Download buttons for Player Database
-            if not filtered_df.empty:
-                st.markdown("### 📥 Descargar Datos / Download Data")
-                create_download_buttons(
-                    filtered_df, 
-                    filename_base="fifa_u20_player_database",
-                    label_prefix="Descargar / Download"
-                )
-                st.markdown("---")
-            
-            if filtered_df.empty:
-                if not st.session_state.show_all_players and not has_active_filters:
-                    st.info("👥 Haz clic en 'Mostrar todos' o usa los filtros para ver los jugadores" if st.session_state.language == 'en' else "👥 انقر على 'إظهار الكل' أو استخدم الفلاتر لمشاهدة اللاعبين")
-                else:
-                    st.warning("❌ No se encontraron jugadores con los filtros seleccionados" if st.session_state.language == 'en' else "❌ لا يوجد لاعبون بالفلاتر المحددة")
+            # Filtrar solo jugadores con informe
+            if players_with_any_report:
+                filtered_df = filtered_df[filtered_df[name_col].isin(players_with_any_report)]
             else:
-                # Group by country/team
-                for country in sorted(filtered_df[country_col].unique()):
-                    country_players = filtered_df[filtered_df[country_col] == country]
+                filtered_df = pd.DataFrame()  # No hay jugadores con informe
+        
+        # Filtrar por conclusión
+        if selected_conclusion != 'Todas':
+            players_with_conclusion = []
+            
+            # Buscar en match reports
+            if not df_reports.empty and 'Conclusion' in df_reports.columns:
+                if selected_conclusion == 'A - Firmar':
+                    # Buscar A al inicio de la conclusión
+                    conclusion_reports = df_reports[df_reports['Conclusion'].astype(str).str.strip().str.upper().str.match(r'^A[\s\-]')]
+                elif selected_conclusion == 'B+ - Seguir para Firmar':
+                    # Buscar específicamente B+
+                    conclusion_reports = df_reports[df_reports['Conclusion'].astype(str).str.contains(r'B\+', case=False, na=False, regex=True)]
+                elif selected_conclusion == 'B - Seguir':
+                    # Buscar B pero NO B+
+                    conclusion_reports = df_reports[
+                        (df_reports['Conclusion'].astype(str).str.strip().str.upper().str.match(r'^B[\s\-]')) &
+                        (~df_reports['Conclusion'].astype(str).str.contains(r'B\+', case=False, na=False, regex=True))
+                    ]
+                else:
+                    conclusion_reports = pd.DataFrame()
+                
+                if not conclusion_reports.empty:
+                    players_with_conclusion.extend(conclusion_reports['Player Name'].unique().tolist())
+            
+            # Buscar en individual reports
+            if not df_individual_reports.empty and 'Conclusion' in df_individual_reports.columns:
+                if selected_conclusion == 'A - Firmar':
+                    # Buscar A al inicio de la conclusión
+                    conclusion_ind_reports = df_individual_reports[df_individual_reports['Conclusion'].astype(str).str.strip().str.upper().str.match(r'^A[\s\-]')]
+                elif selected_conclusion == 'B+ - Seguir para Firmar':
+                    # Buscar específicamente B+
+                    conclusion_ind_reports = df_individual_reports[df_individual_reports['Conclusion'].astype(str).str.contains(r'B\+', case=False, na=False, regex=True)]
+                elif selected_conclusion == 'B - Seguir':
+                    # Buscar B pero NO B+
+                    conclusion_ind_reports = df_individual_reports[
+                        (df_individual_reports['Conclusion'].astype(str).str.strip().str.upper().str.match(r'^B[\s\-]')) &
+                        (~df_individual_reports['Conclusion'].astype(str).str.contains(r'B\+', case=False, na=False, regex=True))
+                    ]
+                else:
+                    conclusion_ind_reports = pd.DataFrame()
+                
+                if not conclusion_ind_reports.empty:
+                    players_with_conclusion.extend(conclusion_ind_reports['Player'].unique().tolist())
+            
+            # Filtrar solo jugadores con esa conclusión
+            if players_with_conclusion:
+                filtered_df = filtered_df[filtered_df[name_col].isin(players_with_conclusion)]
+            else:
+                filtered_df = pd.DataFrame()  # No hay jugadores con esa conclusión
+        
+        # Si no se ha activado "Mostrar todos" y no hay filtros activos, no mostrar nada
+        has_active_filters = (
+            search_player or 
+            selected_position != 'All Positions' or 
+            selected_country != 'All Teams' or
+            only_with_reports or
+            selected_conclusion != 'Todas'
+        )
+        
+        if not st.session_state.show_all_players and not has_active_filters:
+            filtered_df = pd.DataFrame()  # No mostrar nada
+        
+        st.markdown("---")
+        
+        # Display stats
+        col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+        with col_stat1:
+            st.metric("👥 Total Players", len(filtered_df))
+        with col_stat2:
+            st.metric("🌍 Teams", filtered_df[country_col].nunique() if not filtered_df.empty else 0)
+        with col_stat3:
+            # Count players with match reports
+            if not df_reports.empty and not filtered_df.empty:
+                players_with_match_reports = filtered_df[name_col].isin(df_reports['Player Name']).sum()
+                st.metric("⚽ Match Reports", players_with_match_reports)
+            else:
+                st.metric("⚽ Match Reports", 0)
+        with col_stat4:
+            # Count players with individual reports
+            if not df_individual_reports.empty and not filtered_df.empty:
+                players_with_individual_reports = filtered_df[name_col].isin(df_individual_reports['Player']).sum()
+                st.metric("📋 Individual Reports", players_with_individual_reports)
+            else:
+                st.metric("📋 Individual Reports", 0)
+        
+        st.markdown("---")
+        
+        # Download buttons for Player Database
+        if not filtered_df.empty:
+            st.markdown("### 📥 Descargar Datos / Download Data")
+            create_download_buttons(
+                filtered_df, 
+                filename_base="fifa_u20_player_database",
+                label_prefix="Descargar / Download"
+            )
+            st.markdown("---")
+        
+        if filtered_df.empty:
+            if not st.session_state.show_all_players and not has_active_filters:
+                st.info("👥 Haz clic en 'Mostrar todos' o usa los filtros para ver los jugadores" if st.session_state.language == 'en' else "👥 انقر على 'إظهار الكل' أو استخدم الفلاتر لمشاهدة اللاعبين")
+            else:
+                st.warning("❌ No se encontraron jugadores con los filtros seleccionados" if st.session_state.language == 'en' else "❌ لا يوجد لاعبون بالفلاتر المحددة")
+        else:
+            # Group by country/team
+            for country in sorted(filtered_df[country_col].unique()):
+                country_players = filtered_df[filtered_df[country_col] == country]
+                
+                # Country header with flag/logo image using PIL
+                flag_file = COUNTRY_FLAGS.get(country, None)
+                flag_html = ''
+                
+                if flag_file:
+                    try:
+                        # Use PIL to open and encode image
+                        from PIL import Image
+                        import io
+                        
+                        img = Image.open(flag_file)
+                        buffered = io.BytesIO()
+                        
+                        # Convert to RGB if necessary and save as PNG
+                        if img.mode in ('RGBA', 'LA', 'P'):
+                            # Keep transparency
+                            img.save(buffered, format="PNG")
+                            img_type = "png"
+                        else:
+                            img = img.convert('RGB')
+                            img.save(buffered, format="PNG")
+                            img_type = "png"
+                        
+                        img_str = base64.b64encode(buffered.getvalue()).decode()
+                        flag_html = f'<img src="data:image/{img_type};base64,{img_str}" style="height:40px; vertical-align:middle; margin-right:10px;">'
+                    except Exception as e:
+                        flag_html = '🏴 '
+                else:
+                    flag_html = '🏴 '
+                
+                # Count players with match reports in this team
+                team_players_with_match_reports = 0
+                if not df_reports.empty:
+                    team_players_with_match_reports = country_players[name_col].isin(df_reports['Player Name']).sum()
+                
+                # Count players with individual reports in this team
+                team_players_with_individual_reports = 0
+                if not df_individual_reports.empty:
+                    team_players_with_individual_reports = country_players[name_col].isin(df_individual_reports['Player']).sum()
+                
+                # Display country header
+                st.markdown(
+                    f'<div style="background-color: #002B5B; color: white; padding: 1rem; border-radius: 8px; margin: 1rem 0; font-weight: bold; font-size: 1.2rem;">{flag_html}{country} U20 ({len(country_players)} players | ⚽ {team_players_with_match_reports} match reports | 📋 {team_players_with_individual_reports} individual reports)</div>',
+                    unsafe_allow_html=True
+                )
+                
+                # Display players as expandable cards within this team
+                for idx, player in country_players.iterrows():
+                    player_name = player[name_col]
+                    player_position = player.get(position_col, 'N/A')
+                    player_team = player[country_col]
+                    player_age = player.get('Edad', 'N/A')
+                    player_club = player.get('Equipo', 'N/A')
                     
-                    # Country header with flag/logo image using PIL
-                    flag_file = COUNTRY_FLAGS.get(country, None)
-                    flag_html = ''
+                    # Check if player has match reports
+                    has_match_reports = False
+                    player_reports = pd.DataFrame()
+                    if not df_reports.empty:
+                        player_reports = df_reports[df_reports['Player Name'] == player_name]
+                        has_match_reports = len(player_reports) > 0
                     
-                    if flag_file:
+                    # Check if player has individual reports
+                    has_individual_reports = False
+                    player_individual_reports = pd.DataFrame()
+                    if not df_individual_reports.empty:
+                        # Try exact match first
+                        player_individual_reports = df_individual_reports[df_individual_reports['Player'] == player_name]
+                        # If no exact match, try case-insensitive and stripped
+                        if len(player_individual_reports) == 0:
+                            player_individual_reports = df_individual_reports[
+                                df_individual_reports['Player'].str.strip().str.lower() == player_name.strip().lower()
+                            ]
+                        has_individual_reports = len(player_individual_reports) > 0
+                    
+                    # Card header with status indicator
+                    has_any_report = has_match_reports or has_individual_reports
+                    
+                    # Determinar emoji según conclusión - revisar TODOS los informes
+                    status_emoji = ""
+                    best_conclusion_priority = 0  # 0=ninguno, 1=otros, 2=B, 3=B+, 4=A
+                    
+                    if has_any_report:
+                        # Revisar individual reports
+                        if has_individual_reports:
+                            for _, ind_report in player_individual_reports.iterrows():
+                                conclusion = str(ind_report.get('Conclusion', '')).strip()
+                                conclusion_upper = conclusion.upper()
+                                
+                                # Determinar prioridad
+                                if conclusion_upper.startswith('A ') or conclusion_upper.startswith('A-') or (conclusion_upper.startswith('A') and len(conclusion_upper) > 1 and conclusion_upper[1] in [' ', '-']):
+                                    if best_conclusion_priority < 4:
+                                        best_conclusion_priority = 4
+                                        status_emoji = "⭐️"
+                                elif 'B+' in conclusion_upper or 'B +' in conclusion_upper:
+                                    if best_conclusion_priority < 3:
+                                        best_conclusion_priority = 3
+                                        status_emoji = "🟢"
+                                elif conclusion_upper.startswith('B ') or conclusion_upper.startswith('B-'):
+                                    if best_conclusion_priority < 2:
+                                        best_conclusion_priority = 2
+                                        status_emoji = "☑️"
+                                elif conclusion and conclusion != 'nan':
+                                    if best_conclusion_priority < 1:
+                                        best_conclusion_priority = 1
+                                        status_emoji = "☑️"
+                        
+                        # Revisar match reports
+                        if has_match_reports:
+                            for _, match_report in player_reports.iterrows():
+                                match_conclusion = str(match_report.get('Conclusion', '')).strip()
+                                match_conclusion_upper = match_conclusion.upper()
+                                
+                                # Determinar prioridad
+                                if match_conclusion_upper.startswith('A ') or match_conclusion_upper.startswith('A-') or (match_conclusion_upper.startswith('A') and len(match_conclusion_upper) > 1 and match_conclusion_upper[1] in [' ', '-']):
+                                    if best_conclusion_priority < 4:
+                                        best_conclusion_priority = 4
+                                        status_emoji = "⭐️"
+                                elif 'B+' in match_conclusion_upper or 'B +' in match_conclusion_upper:
+                                    if best_conclusion_priority < 3:
+                                        best_conclusion_priority = 3
+                                        status_emoji = "🟢"
+                                elif match_conclusion_upper.startswith('B ') or match_conclusion_upper.startswith('B-'):
+                                    if best_conclusion_priority < 2:
+                                        best_conclusion_priority = 2
+                                        status_emoji = "☑️"
+                                elif match_conclusion and match_conclusion != 'nan':
+                                    if best_conclusion_priority < 1:
+                                        best_conclusion_priority = 1
+                                        status_emoji = "☑️"
+                        
+                        # Si no se encontró ninguna conclusión válida
+                        if not status_emoji:
+                            status_emoji = "☑️"
+                    
+                    # Siempre usar fondo blanco (sin color)
+                    card_bg_color = "white"
+                    
+                    # Al Nassr minimalist player profile
+                    with st.container():
+                        # Get player photo
+                        player_photo_base64 = ""
                         try:
-                            # Use PIL to open and encode image
                             from PIL import Image
                             import io
+                            import os
                             
-                            img = Image.open(flag_file)
-                            buffered = io.BytesIO()
+                            player_photo_file = f"player_photos/{player_name.replace(' ', '_')}.jpg"
+                            if not os.path.exists(player_photo_file):
+                                player_photo_file = 'profile1.jpg'
                             
-                            # Convert to RGB if necessary and save as PNG
-                            if img.mode in ('RGBA', 'LA', 'P'):
-                                # Keep transparency
-                                img.save(buffered, format="PNG")
-                                img_type = "png"
-                            else:
-                                img = img.convert('RGB')
-                                img.save(buffered, format="PNG")
-                                img_type = "png"
-                            
-                            img_str = base64.b64encode(buffered.getvalue()).decode()
-                            flag_html = f'<img src="data:image/{img_type};base64,{img_str}" style="height:40px; vertical-align:middle; margin-right:10px;">'
-                        except Exception as e:
-                            flag_html = '🏴 '
-                    else:
-                        flag_html = '🏴 '
-                    
-                    # Count players with match reports in this team
-                    team_players_with_match_reports = 0
-                    if not df_reports.empty:
-                        team_players_with_match_reports = country_players[name_col].isin(df_reports['Player Name']).sum()
-                    
-                    # Count players with individual reports in this team
-                    team_players_with_individual_reports = 0
-                    if not df_individual_reports.empty:
-                        team_players_with_individual_reports = country_players[name_col].isin(df_individual_reports['Player']).sum()
-                    
-                    # Display country header
-                    st.markdown(
-                        f'<div style="background-color: #002B5B; color: white; padding: 1rem; border-radius: 8px; margin: 1rem 0; font-weight: bold; font-size: 1.2rem;">{flag_html}{country} U20 ({len(country_players)} players | ⚽ {team_players_with_match_reports} match reports | 📋 {team_players_with_individual_reports} individual reports)</div>',
-                        unsafe_allow_html=True
-                    )
-                    
-                    # Display players as expandable cards within this team
-                    for idx, player in country_players.iterrows():
-                        player_name = player[name_col]
-                        player_position = player.get(position_col, 'N/A')
-                        player_team = player[country_col]
-                        player_age = player.get('Edad', 'N/A')
-                        player_club = player.get('Equipo', 'N/A')
-                        
-                        # Check if player has match reports
-                        has_match_reports = False
-                        player_reports = pd.DataFrame()
-                        if not df_reports.empty:
-                            player_reports = df_reports[df_reports['Player Name'] == player_name]
-                            has_match_reports = len(player_reports) > 0
-                        
-                        # Check if player has individual reports
-                        has_individual_reports = False
-                        player_individual_reports = pd.DataFrame()
-                        if not df_individual_reports.empty:
-                            # Try exact match first
-                            player_individual_reports = df_individual_reports[df_individual_reports['Player'] == player_name]
-                            # If no exact match, try case-insensitive and stripped
-                            if len(player_individual_reports) == 0:
-                                player_individual_reports = df_individual_reports[
-                                    df_individual_reports['Player'].str.strip().str.lower() == player_name.strip().lower()
-                                ]
-                            has_individual_reports = len(player_individual_reports) > 0
-                        
-                        # Card header with status indicator
-                        has_any_report = has_match_reports or has_individual_reports
-                        
-                        # Determinar emoji según conclusión
-                        status_emoji = ""
-                        
-                        if has_any_report:
-                            # Primero verificar si tiene informe individual con conclusión
-                            if has_individual_reports:
-                                # Get the most recent individual report
-                                latest_ind = player_individual_reports.iloc[-1]
-                                conclusion = str(latest_ind.get('Conclusion', '')).strip().upper()
+                            if os.path.exists(player_photo_file):
+                                img = Image.open(player_photo_file)
+                                img.thumbnail((120, 120), Image.Resampling.LANCZOS)
+                                buffered = io.BytesIO()
                                 
-                                # ⭐️ si tiene A - Firmar (Sign)
-                                if 'A -' in conclusion or 'A-' in conclusion or conclusion.startswith('A '):
-                                    status_emoji = "⭐️"
-                                # 🟢 si tiene B+ - Seguir para Firmar (Follow to Sign)
-                                elif 'B+' in conclusion:
-                                    status_emoji = "🟢"
-                                # ☑️ si tiene cualquier otro informe
+                                if img.mode in ('RGBA', 'LA', 'P'):
+                                    img.save(buffered, format="PNG")
                                 else:
-                                    status_emoji = "☑️"
-                            # Si solo tiene match reports
-                            elif has_match_reports:
-                                # Verificar conclusiones de match reports
-                                if not player_reports.empty:
-                                    latest_match = player_reports.iloc[-1]
-                                    match_conclusion = str(latest_match.get('Conclusion', '')).strip().upper()
-                                    
-                                    if 'A -' in match_conclusion or 'A-' in match_conclusion or match_conclusion.startswith('A '):
-                                        status_emoji = "⭐️"
-                                    elif 'B+' in match_conclusion:
-                                        status_emoji = "🟢"
-                                    else:
-                                        status_emoji = "☑️"
-                                else:
-                                    status_emoji = "☑️"
+                                    img = img.convert('RGB')
+                                    img.save(buffered, format="PNG")
+                                
+                                player_photo_base64 = base64.b64encode(buffered.getvalue()).decode()
+                        except:
+                            pass
                         
-                        # Siempre usar fondo blanco (sin color)
-                        card_bg_color = "white"
+                        # Birth year
+                        birth_year = str(player.get('Año', ''))[:4] if player.get('Año') else 'N/A'
+                        contract_date = str(player.get('Fin Contrato', 'N/A'))[:10]
                         
-                        # Al Nassr minimalist player profile
-                        with st.container():
-                            # Get player photo
-                            player_photo_base64 = ""
-                            try:
-                                from PIL import Image
-                                import io
-                                import os
-                                
-                                player_photo_file = f"player_photos/{player_name.replace(' ', '_')}.jpg"
-                                if not os.path.exists(player_photo_file):
-                                    player_photo_file = 'profile1.jpg'
-                                
-                                if os.path.exists(player_photo_file):
-                                    img = Image.open(player_photo_file)
-                                    img.thumbnail((120, 120), Image.Resampling.LANCZOS)
-                                    buffered = io.BytesIO()
-                                    
-                                    if img.mode in ('RGBA', 'LA', 'P'):
-                                        img.save(buffered, format="PNG")
-                                    else:
-                                        img = img.convert('RGB')
-                                        img.save(buffered, format="PNG")
-                                    
-                                    player_photo_base64 = base64.b64encode(buffered.getvalue()).decode()
-                            except:
-                                pass
+                        # Expander con el nombre del jugador
+                        with st.expander(
+                            f"{status_emoji} **{player_name}**",
+                            expanded=False
+                        ):
+                            # Al Nassr Header Section
+                            photo_html = f'<img src="data:image/png;base64,{player_photo_base64}" style="width:120px; height:120px; border-radius:50%; object-fit:cover; border:3px solid #FFC60A;">' if player_photo_base64 else '<div style="width:120px; height:120px; border-radius:50%; background:#FFC60A; display:flex; align-items:center; justify-content:center; font-size:48px; border:3px solid #FFC60A;">👤</div>'
                             
-                            # Birth year
-                            birth_year = str(player.get('Año', ''))[:4] if player.get('Año') else 'N/A'
-                            contract_date = str(player.get('Fin Contrato', 'N/A'))[:10]
+                            st.markdown(f"""
+                                <div style="background: #1a2332; padding: 30px; border-radius: 8px; margin-bottom: 30px;">
+                                    <div style="display: flex; align-items: center; gap: 30px; flex-wrap: wrap;">
+                                        <div>{photo_html}</div>
+                                        <div style="flex: 1; min-width: 300px;">
+                                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px;">
+                                                <div>
+                                                    <div style="color: #FFC60A; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 5px;">POSITION</div>
+                                                    <div style="color: white; font-size: 24px; font-weight: 600;">{player_position}</div>
+                                                </div>
+                                                <div>
+                                                    <div style="color: #FFC60A; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 5px;">TEAM</div>
+                                                    <div style="color: white; font-size: 24px; font-weight: 600;">{player.get('Equipo', 'N/A')}</div>
+                                                </div>
+                                                <div>
+                                                    <div style="color: #FFC60A; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 5px;">AGE</div>
+                                                    <div style="color: white; font-size: 24px; font-weight: 600;">{player_age}</div>
+                                                </div>
+                                                <div>
+                                                    <div style="color: #FFC60A; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 5px;">YEAR</div>
+                                                    <div style="color: white; font-size: 24px; font-weight: 600;">{birth_year}</div>
+                                                </div>
+                                                <div>
+                                                    <div style="color: #FFC60A; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 5px;">CONTRACT</div>
+                                                    <div style="color: white; font-size: 24px; font-weight: 600;">{contract_date}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            """, unsafe_allow_html=True)
                             
-                            # Expander con el nombre del jugador
-                            with st.expander(
-                                f"{status_emoji} **{player_name}**",
-                                expanded=False
-                            ):
-                                # Al Nassr Header Section
-                                photo_html = f'<img src="data:image/png;base64,{player_photo_base64}" style="width:120px; height:120px; border-radius:50%; object-fit:cover; border:3px solid #FFC60A;">' if player_photo_base64 else '<div style="width:120px; height:120px; border-radius:50%; background:#FFC60A; display:flex; align-items:center; justify-content:center; font-size:48px; border:3px solid #FFC60A;">👤</div>'
+                            # Photo upload section
+                            st.markdown("---")
+                            col_upload1, col_upload2 = st.columns([2, 4])
+                            
+                            with col_upload1:
+                                uploaded_player_photo = st.file_uploader(
+                                    "📷 Subir Foto del Jugador",
+                                    type=['jpg', 'jpeg', 'png'],
+                                    key=f"upload_photo_{idx}_{player_name.replace(' ', '_').replace('.', '_')}",
+                                    help="Sube una foto del jugador"
+                                )
                                 
+                                if uploaded_player_photo:
+                                    if st.button("💾 Guardar Foto", key=f"save_photo_{idx}_{player_name.replace(' ', '_').replace('.', '_')}"):
+                                        import os
+                                        os.makedirs('player_photos', exist_ok=True)
+                                        photo_filename = f"player_photos/{player_name.replace(' ', '_')}.jpg"
+                                        with open(photo_filename, 'wb') as f:
+                                            f.write(uploaded_player_photo.getbuffer())
+                                        st.success("✅ Foto guardada correctamente!")
+                                        import time
+                                        time.sleep(1)
+                                        st.rerun()
+                            
+                            st.markdown("---")
+                            
+                            # Match Reports Section with Al Nassr Design
+                            if has_match_reports:
                                 st.markdown(f"""
-                                    <div style="background: #1a2332; padding: 30px; border-radius: 8px; margin-bottom: 30px;">
-                                        <div style="display: flex; align-items: center; gap: 30px; flex-wrap: wrap;">
-                                            <div>{photo_html}</div>
-                                            <div style="flex: 1; min-width: 300px;">
-                                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px;">
-                                                    <div>
-                                                        <div style="color: #FFC60A; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 5px;">POSITION</div>
-                                                        <div style="color: white; font-size: 24px; font-weight: 600;">{player_position}</div>
+                                    <div style="color: #1a2332; font-size: 20px; font-weight: 700; margin: 20px 0 15px 0;">
+                                        {len(player_reports)} Match Report(s)
+                                    </div>
+                                """, unsafe_allow_html=True)
+                                
+                                # Display each match report card
+                                for rep_idx, report in player_reports.iterrows():
+                                    match_date = report['Date']
+                                    match_teams = report['Match']
+                                    scout = report['Scout']
+                                    phase = report['Phase']
+                                    performance = report['Performance']
+                                    potential = report['Potential']
+                                    conclusion = report.get('Conclusion', 'B - Seguir')
+                                    full_report = report.get('Report', '')
+                                    
+                                    # Conclusion badge color
+                                    conclusion_str = str(conclusion).strip().upper()
+                                    if 'A -' in conclusion_str or 'A-' in conclusion_str or conclusion_str.startswith('A '):
+                                        conclusion_color = '#4CAF50'  # Green for A
+                                        conclusion_bg = 'rgba(76, 175, 80, 0.1)'
+                                    elif 'B+' in conclusion_str:
+                                        conclusion_color = '#4CAF50'  # Green for B+
+                                        conclusion_bg = 'rgba(76, 175, 80, 0.1)'
+                                    else:
+                                        conclusion_color = '#ff8c00'  # Orange for B
+                                        conclusion_bg = 'rgba(255, 140, 0, 0.1)'
+                                    
+                                    # Performance percentage for red gradient bar
+                                    perf_percent = (performance / 6) * 100
+                                    pot_percent = (potential / 6) * 100
+                                    
+                                    # Unique key for toggle
+                                    toggle_key = f"toggle_report_{idx}_{player_name.replace(' ', '_').replace('.', '_')}_{rep_idx}"
+                                    if toggle_key not in st.session_state:
+                                        st.session_state[toggle_key] = False
+                                    
+                                    # Match Report Card with Al Nassr Design
+                                    st.markdown(f'''
+                                    <div style="border: 2px solid #e0e0e0; border-radius: 8px; margin-bottom: 15px; overflow: hidden;">
+                                        <div style="background: #1a2332; padding: 15px 20px; color: white;">
+                                            <div style="font-size: 16px; font-weight: 600;">{match_date} | {match_teams}</div>
+                                        </div>
+                                        <div style="background: #f9f9f9; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                                            <div style="font-size: 13px; color: #666;">
+                                                <strong>Scout:</strong> {scout} | <strong>Phase:</strong> {phase}
+                                            </div>
+                                            <div style="background: {conclusion_color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase;">
+                                                {conclusion}
+                                            </div>
+                                        </div>
+                                        <div style="padding: 20px; background: white;">
+                                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                                                <div>
+                                                    <div style="font-size: 12px; color: #666; margin-bottom: 8px; font-weight: 600;">PERFORMANCE</div>
+                                                    <div style="font-size: 24px; font-weight: 700; color: #1a2332; margin-bottom: 8px;">{performance}/6</div>
+                                                    <div style="background: #f0f0f0; border-radius: 10px; height: 8px; overflow: hidden;">
+                                                        <div style="background: linear-gradient(90deg, #ff4444, #ff6666); height: 100%; width: {perf_percent}%; border-radius: 10px;"></div>
                                                     </div>
-                                                    <div>
-                                                        <div style="color: #FFC60A; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 5px;">TEAM</div>
-                                                        <div style="color: white; font-size: 24px; font-weight: 600;">{player.get('Equipo', 'N/A')}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div style="color: #FFC60A; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 5px;">AGE</div>
-                                                        <div style="color: white; font-size: 24px; font-weight: 600;">{player_age}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div style="color: #FFC60A; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 5px;">YEAR</div>
-                                                        <div style="color: white; font-size: 24px; font-weight: 600;">{birth_year}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div style="color: #FFC60A; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 5px;">CONTRACT</div>
-                                                        <div style="color: white; font-size: 24px; font-weight: 600;">{contract_date}</div>
+                                                </div>
+                                                <div>
+                                                    <div style="font-size: 12px; color: #666; margin-bottom: 8px; font-weight: 600;">POTENTIAL</div>
+                                                    <div style="font-size: 24px; font-weight: 700; color: #1a2332; margin-bottom: 8px;">{potential}/6</div>
+                                                    <div style="background: #f0f0f0; border-radius: 10px; height: 8px; overflow: hidden;">
+                                                        <div style="background: linear-gradient(90deg, #ff4444, #ff6666); height: 100%; width: {pot_percent}%; border-radius: 10px;"></div>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
+                                    ''', unsafe_allow_html=True)
+                                    
+                                    # Toggle button for full report
+                                    if full_report and str(full_report).strip() and str(full_report) != 'nan':
+                                        col_btn, col_space = st.columns([1, 5])
+                                        with col_btn:
+                                            button_text = "▼ Ver Reporte" if not st.session_state[toggle_key] else "▲ Ocultar"
+                                            if st.button(button_text, key=f"btn_{toggle_key}"):
+                                                st.session_state[toggle_key] = not st.session_state[toggle_key]
+                                                st.rerun()
+                                        
+                                        # Show report if toggled
+                                        if st.session_state[toggle_key]:
+                                            st.markdown(f"""
+                                                <div style="border-top: 3px solid #FFC60A; padding: 20px; background: #f5f5f5; margin-top: -15px; margin-bottom: 15px; border-radius: 0 0 8px 8px;">
+                                                    <div style="color: #333; line-height: 1.6;">{full_report}</div>
+                                                </div>
+                                            """, unsafe_allow_html=True)
+                            
+                            # Individual Report Section (if exists)
+                            if has_individual_reports:
+                                st.markdown("""
+                                    <div style="color: #1a2332; font-size: 20px; font-weight: 700; margin: 30px 0 15px 0;">
+                                        Individual Reports
+                                    </div>
                                 """, unsafe_allow_html=True)
                                 
-                                # Photo upload section
-                                st.markdown("---")
-                                col_upload1, col_upload2 = st.columns([2, 4])
+                                # Calcular medias
+                                num_reports = len(player_individual_reports)
+                                avg_rendimiento = player_individual_reports['Rendimiento'].mean()
+                                avg_potencial = player_individual_reports['Potencial'].mean()
                                 
-                                with col_upload1:
-                                    uploaded_player_photo = st.file_uploader(
-                                        "📷 Subir Foto del Jugador",
-                                        type=['jpg', 'jpeg', 'png'],
-                                        key=f"upload_photo_{idx}_{player_name.replace(' ', '_').replace('.', '_')}",
-                                        help="Sube una foto del jugador"
-                                    )
-                                    
-                                    if uploaded_player_photo:
-                                        if st.button("💾 Guardar Foto", key=f"save_photo_{idx}_{player_name.replace(' ', '_').replace('.', '_')}"):
-                                            import os
-                                            os.makedirs('player_photos', exist_ok=True)
-                                            photo_filename = f"player_photos/{player_name.replace(' ', '_')}.jpg"
-                                            with open(photo_filename, 'wb') as f:
-                                                f.write(uploaded_player_photo.getbuffer())
-                                            st.success("✅ Foto guardada correctamente!")
-                                            import time
-                                            time.sleep(1)
-                                            st.rerun()
+                                # Obtener lista de scouts
+                                scouts_list = player_individual_reports['Scout'].dropna().unique().tolist()
+                                scouts_text = ", ".join(scouts_list) if scouts_list else "N/A"
                                 
-                                st.markdown("---")
+                                # Mostrar información general
+                                st.markdown(f"📊 **{num_reports} Informe(s) de: {scouts_text}**")
+                                st.markdown("")
                                 
-                                # Match Reports Section with Al Nassr Design
-                                if has_match_reports:
-                                    st.markdown(f"""
-                                        <div style="color: #1a2332; font-size: 20px; font-weight: 700; margin: 20px 0 15px 0;">
-                                            {len(player_reports)} Match Report(s)
-                                        </div>
-                                    """, unsafe_allow_html=True)
-                                    
-                                    # Display each match report card
-                                    for rep_idx, report in player_reports.iterrows():
-                                        match_date = report['Date']
-                                        match_teams = report['Match']
-                                        scout = report['Scout']
-                                        phase = report['Phase']
-                                        performance = report['Performance']
-                                        potential = report['Potential']
-                                        conclusion = report.get('Conclusion', 'B - Seguir')
-                                        full_report = report.get('Report', '')
-                                        
-                                        # Conclusion badge color
-                                        conclusion_str = str(conclusion).strip().upper()
-                                        if 'A -' in conclusion_str or 'A-' in conclusion_str or conclusion_str.startswith('A '):
-                                            conclusion_color = '#4CAF50'  # Green for A
-                                            conclusion_bg = 'rgba(76, 175, 80, 0.1)'
-                                        elif 'B+' in conclusion_str:
-                                            conclusion_color = '#4CAF50'  # Green for B+
-                                            conclusion_bg = 'rgba(76, 175, 80, 0.1)'
-                                        else:
-                                            conclusion_color = '#ff8c00'  # Orange for B
-                                            conclusion_bg = 'rgba(255, 140, 0, 0.1)'
-                                        
-                                        # Performance percentage for red gradient bar
-                                        perf_percent = (performance / 6) * 100
-                                        pot_percent = (potential / 6) * 100
-                                        
-                                        # Unique key for toggle
-                                        toggle_key = f"toggle_report_{idx}_{player_name.replace(' ', '_').replace('.', '_')}_{rep_idx}"
-                                        if toggle_key not in st.session_state:
-                                            st.session_state[toggle_key] = False
-                                        
-                                        # Match Report Card with Al Nassr Design
-                                        st.markdown(f'''
-                                        <div style="border: 2px solid #e0e0e0; border-radius: 8px; margin-bottom: 15px; overflow: hidden;">
-                                            <div style="background: #1a2332; padding: 15px 20px; color: white;">
-                                                <div style="font-size: 16px; font-weight: 600;">{match_date} | {match_teams}</div>
-                                            </div>
-                                            <div style="background: #f9f9f9; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                                                <div style="font-size: 13px; color: #666;">
-                                                    <strong>Scout:</strong> {scout} | <strong>Phase:</strong> {phase}
-                                                </div>
-                                                <div style="background: {conclusion_color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase;">
-                                                    {conclusion}
-                                                </div>
-                                            </div>
-                                            <div style="padding: 20px; background: white;">
-                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                                                    <div>
-                                                        <div style="font-size: 12px; color: #666; margin-bottom: 8px; font-weight: 600;">PERFORMANCE</div>
-                                                        <div style="font-size: 24px; font-weight: 700; color: #1a2332; margin-bottom: 8px;">{performance}/6</div>
-                                                        <div style="background: #f0f0f0; border-radius: 10px; height: 8px; overflow: hidden;">
-                                                            <div style="background: linear-gradient(90deg, #ff4444, #ff6666); height: 100%; width: {perf_percent}%; border-radius: 10px;"></div>
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <div style="font-size: 12px; color: #666; margin-bottom: 8px; font-weight: 600;">POTENTIAL</div>
-                                                        <div style="font-size: 24px; font-weight: 700; color: #1a2332; margin-bottom: 8px;">{potential}/6</div>
-                                                        <div style="background: #f0f0f0; border-radius: 10px; height: 8px; overflow: hidden;">
-                                                            <div style="background: linear-gradient(90deg, #ff4444, #ff6666); height: 100%; width: {pot_percent}%; border-radius: 10px;"></div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        ''', unsafe_allow_html=True)
-                                        
-                                        # Toggle button for full report
-                                        if full_report and str(full_report).strip() and str(full_report) != 'nan':
-                                            col_btn, col_space = st.columns([1, 5])
-                                            with col_btn:
-                                                button_text = "▼ Ver Reporte" if not st.session_state[toggle_key] else "▲ Ocultar"
-                                                if st.button(button_text, key=f"btn_{toggle_key}"):
-                                                    st.session_state[toggle_key] = not st.session_state[toggle_key]
-                                                    st.rerun()
-                                            
-                                            # Show report if toggled
-                                            if st.session_state[toggle_key]:
-                                                st.markdown(f"""
-                                                    <div style="border-top: 3px solid #FFC60A; padding: 20px; background: #f5f5f5; margin-top: -15px; margin-bottom: 15px; border-radius: 0 0 8px 8px;">
-                                                        <div style="color: #333; line-height: 1.6;">{full_report}</div>
-                                                    </div>
-                                                """, unsafe_allow_html=True)
-                                
-                                # Individual Report Section (if exists)
-                                if has_individual_reports:
-                                    st.markdown("""
-                                        <div style="color: #1a2332; font-size: 20px; font-weight: 700; margin: 30px 0 15px 0;">
-                                            Individual Reports
-                                        </div>
-                                    """, unsafe_allow_html=True)
-                                    
-                                    # Calcular medias
-                                    num_reports = len(player_individual_reports)
-                                    avg_rendimiento = player_individual_reports['Rendimiento'].mean()
-                                    avg_potencial = player_individual_reports['Potencial'].mean()
-                                    
-                                    # Obtener lista de scouts
-                                    scouts_list = player_individual_reports['Scout'].dropna().unique().tolist()
-                                    scouts_text = ", ".join(scouts_list) if scouts_list else "N/A"
-                                    
-                                    # Mostrar información general
-                                    st.markdown(f"📊 **{num_reports} Informe(s) de: {scouts_text}**")
-                                    st.markdown("")
-                                    
-                                    # Cargar logo Al Nassr para las tarjetas
-                                    try:
-                                        from PIL import Image
-                                        import io
-                                        logo_img = Image.open('alnassr.png')
-                                        logo_img.thumbnail((40, 40))
-                                        buffered = io.BytesIO()
-                                        if logo_img.mode in ('RGBA', 'LA', 'P'):
-                                            logo_img.save(buffered, format="PNG")
-                                        else:
-                                            logo_img = logo_img.convert('RGB')
-                                            logo_img.save(buffered, format="PNG")
-                                        logo_str = base64.b64encode(buffered.getvalue()).decode()
-                                        logo_html = f'<img src="data:image/png;base64,{logo_str}" style="height:24px; margin-bottom:8px;">'
-                                    except:
-                                        logo_html = '<div style="font-size:24px; margin-bottom:10px;">🦅</div>'
-                                    
-                                    # Mostrar valoraciones medias en 2 columnas con estilo minimalista
-                                    col_avg1, col_avg2 = st.columns(2)
-                                    
-                                    with col_avg1:
-                                        st.markdown("""
-                                            <div style="background: white; padding: 20px 18px; border-radius: 10px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: 1.5px solid #FFD700;">
-                                                {}
-                                                <p style="font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; font-weight: 600;">🎯 RENDIMIENTO</p>
-                                                <h1 style="font-size: 48px; font-weight: 700; color: #1B2845; margin: 8px 0; line-height: 1;">{:.1f}</h1>
-                                                <p style="font-size: 10px; color: #999; margin-top: 6px;">Sobre 6.0</p>
-                                            </div>
-                                        """.format(logo_html, avg_rendimiento), unsafe_allow_html=True)
-                                    
-                                    with col_avg2:
-                                        st.markdown("""
-                                            <div style="background: white; padding: 20px 18px; border-radius: 10px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: 1.5px solid #FFD700;">
-                                                {}
-                                                <p style="font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; font-weight: 600;">⭐ POTENCIAL</p>
-                                                <h1 style="font-size: 48px; font-weight: 700; color: #1B2845; margin: 8px 0; line-height: 1;">{:.1f}</h1>
-                                                <p style="font-size: 10px; color: #999; margin-top: 6px;">Sobre 6.0</p>
-                                            </div>
-                                        """.format(logo_html, avg_potencial), unsafe_allow_html=True)
-                                    
-                                    # Si solo hay 1 informe, mostrar nota
-                                    st.markdown("")
-                                    if num_reports == 1:
-                                        st.info("ℹ️ Este jugador tiene 1 informe individual.")
+                                # Cargar logo Al Nassr para las tarjetas
+                                try:
+                                    from PIL import Image
+                                    import io
+                                    logo_img = Image.open('alnassr.png')
+                                    logo_img.thumbnail((40, 40))
+                                    buffered = io.BytesIO()
+                                    if logo_img.mode in ('RGBA', 'LA', 'P'):
+                                        logo_img.save(buffered, format="PNG")
                                     else:
-                                        st.success(f"✅ Media calculada de {num_reports} informes de diferentes scouts.")
-                                    
-                                    # Mostrar informes individuales
-                                    st.markdown("---")
-                                    st.markdown(f"### 📝 Informes Individuales ({num_reports})")
-                                    st.markdown("")
-                                    
-                                    for idx, ind_report in player_individual_reports.iterrows():
-                                        scout_name = ind_report.get('Scout', 'Sin nombre')
-                                        if pd.isna(scout_name) or str(scout_name).strip() == '' or str(scout_name) == 'nan':
-                                            scout_name = "Sin nombre"
-                                        
-                                        report_date = ind_report.get('Date', 'N/A')
-                                        
-                                        with st.expander(f"👤 {scout_name} - 📅 {report_date}", expanded=False):
-                                            col_r1, col_r2 = st.columns(2)
-                                            
-                                            with col_r1:
-                                                st.metric("🎯 Rendimiento", f"{ind_report['Rendimiento']}/6")
-                                            
-                                            with col_r2:
-                                                st.metric("⭐ Potencial", f"{ind_report['Potencial']}/6")
-                                            
-                                            # Perfil
-                                            perfil_val = ind_report.get('Perfil', 'N/A')
-                                            if isinstance(perfil_val, str) and '-' in perfil_val:
-                                                st.markdown(f"🏆 **Perfil:** {perfil_val}")
-                                            else:
-                                                st.markdown(f"🏆 **Perfil:** {perfil_val}/6")
-                                            
-                                            # Technical comment
-                                            tech_comment = ind_report.get('Technical Comment', None)
-                                            if tech_comment and str(tech_comment) != 'nan' and str(tech_comment).strip():
-                                                st.markdown("💬 **Comentario Técnico:**")
-                                                st.info(tech_comment)
-                                            
-                                            # Conclusion
-                                            conclusion_text = ind_report.get('Conclusion', '')
-                                            if conclusion_text and str(conclusion_text) != 'nan':
-                                                st.markdown(f"✅ **Conclusión:** {conclusion_text}")
+                                        logo_img = logo_img.convert('RGB')
+                                        logo_img.save(buffered, format="PNG")
+                                    logo_str = base64.b64encode(buffered.getvalue()).decode()
+                                    logo_html = f'<img src="data:image/png;base64,{logo_str}" style="height:24px; margin-bottom:8px;">'
+                                except:
+                                    logo_html = '<div style="font-size:24px; margin-bottom:10px;">🦅</div>'
                                 
-                                # Player card display complete
+                                # Mostrar valoraciones medias en 2 columnas con estilo minimalista
+                                col_avg1, col_avg2 = st.columns(2)
+                                
+                                with col_avg1:
+                                    st.markdown("""
+                                        <div style="background: white; padding: 20px 18px; border-radius: 10px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: 1.5px solid #FFD700;">
+                                            {}
+                                            <p style="font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; font-weight: 600;">🎯 RENDIMIENTO</p>
+                                            <h1 style="font-size: 48px; font-weight: 700; color: #1B2845; margin: 8px 0; line-height: 1;">{:.1f}</h1>
+                                            <p style="font-size: 10px; color: #999; margin-top: 6px;">Sobre 6.0</p>
+                                        </div>
+                                    """.format(logo_html, avg_rendimiento), unsafe_allow_html=True)
+                                
+                                with col_avg2:
+                                    st.markdown("""
+                                        <div style="background: white; padding: 20px 18px; border-radius: 10px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: 1.5px solid #FFD700;">
+                                            {}
+                                            <p style="font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; font-weight: 600;">⭐ POTENCIAL</p>
+                                            <h1 style="font-size: 48px; font-weight: 700; color: #1B2845; margin: 8px 0; line-height: 1;">{:.1f}</h1>
+                                            <p style="font-size: 10px; color: #999; margin-top: 6px;">Sobre 6.0</p>
+                                        </div>
+                                    """.format(logo_html, avg_potencial), unsafe_allow_html=True)
+                                
+                                # Si solo hay 1 informe, mostrar nota
+                                st.markdown("")
+                                if num_reports == 1:
+                                    st.info("ℹ️ Este jugador tiene 1 informe individual.")
+                                else:
+                                    st.success(f"✅ Media calculada de {num_reports} informes de diferentes scouts.")
+                                
+                                # Mostrar informes individuales
+                                st.markdown("---")
+                                st.markdown(f"### 📝 Informes Individuales ({num_reports})")
+                                st.markdown("")
+                                
+                                for idx, ind_report in player_individual_reports.iterrows():
+                                    scout_name = ind_report.get('Scout', 'Sin nombre')
+                                    if pd.isna(scout_name) or str(scout_name).strip() == '' or str(scout_name) == 'nan':
+                                        scout_name = "Sin nombre"
+                                    
+                                    report_date = ind_report.get('Date', 'N/A')
+                                    
+                                    with st.expander(f"👤 {scout_name} - 📅 {report_date}", expanded=False):
+                                        col_r1, col_r2 = st.columns(2)
+                                        
+                                        with col_r1:
+                                            st.metric("🎯 Rendimiento", f"{ind_report['Rendimiento']}/6")
+                                        
+                                        with col_r2:
+                                            st.metric("⭐ Potencial", f"{ind_report['Potencial']}/6")
+                                        
+                                        # Perfil
+                                        perfil_val = ind_report.get('Perfil', 'N/A')
+                                        if isinstance(perfil_val, str) and '-' in perfil_val:
+                                            st.markdown(f"🏆 **Perfil:** {perfil_val}")
+                                        else:
+                                            st.markdown(f"🏆 **Perfil:** {perfil_val}/6")
+                                        
+                                        # Technical comment
+                                        tech_comment = ind_report.get('Technical Comment', None)
+                                        if tech_comment and str(tech_comment) != 'nan' and str(tech_comment).strip():
+                                            st.markdown("💬 **Comentario Técnico:**")
+                                            st.info(tech_comment)
+                                        
+                                        # Conclusion
+                                        conclusion_text = ind_report.get('Conclusion', '')
+                                        if conclusion_text and str(conclusion_text) != 'nan':
+                                            st.markdown(f"✅ **Conclusión:** {conclusion_text}")
                             
-        
-        except FileNotFoundError:
-            st.error("❌ WorldCupU20playersdata.xlsx file not found. Please add the file to the project directory." if st.session_state.language == 'en' else "❌ ملف WorldCupU20playersdata.xlsx غير موجود. يرجى إضافة الملف إلى المشروع.")
-        except Exception as e:
-            st.error(f"Error loading player data: {e}" if st.session_state.language == 'en' else f"خطأ في تحميل بيانات اللاعبين: {e}")
+                            # Player card display complete
     
-    # Tab 6: MATCH REPORTS - Al Nassr Professional Dashboard
-    with tabs[5]:
+    # Tab 5: MATCH REPORTS - Al Nassr Professional Dashboard
+    with tabs[4]:
         # Al Nassr Match Reports CSS
         st.markdown("""
             <style>
@@ -4916,8 +2503,10 @@ def show_fifa_u20_view():
         
         # Scout photo name mapping
         SCOUT_PHOTO_MAP = {
+            'Alvaro Lopez': 'alvaro',
             'Alvaro': 'alvaro',
             'Álvaro': 'alvaro',
+            'Álvaro Lopez': 'alvaro',
             'Juan Gambero': 'juan',
             'Juan': 'juan',
             'Rafa Gil': 'rafa',
@@ -5136,12 +2725,24 @@ def show_fifa_u20_view():
                 )
                 st.markdown("---")
             
+            # Scout name mapping for display (convert old names to full names)
+            SCOUT_NAME_DISPLAY = {
+                'Alvaro': 'Alvaro Lopez',
+                'Álvaro': 'Alvaro Lopez',
+                'Juan': 'Juan Gambero',
+                'Rafa': 'Rafa Gil',
+                'Rafael': 'Rafa Gil'
+            }
+            
             # Group by Scout first
             for scout in scouts_in_reports:
                 scout_reports = filtered_reports[filtered_reports['Scout'] == scout]
                 
                 if len(scout_reports) == 0:
                     continue
+                
+                # Get display name for scout (convert short names to full names)
+                scout_display_name = SCOUT_NAME_DISPLAY.get(scout, scout)
                 
                 # Scout Header Section with photo
                 scout_filename = SCOUT_PHOTO_MAP.get(scout, None)
@@ -5181,7 +2782,7 @@ def show_fifa_u20_view():
                         <div style="display: flex; align-items: center; gap: 15px;">
                             {scout_photo_html}
                             <div>
-                                <h3 style="color: #FFC60A; margin: 0; font-size: 20px; font-weight: 700;">{scout}</h3>
+                                <h3 style="color: #FFC60A; margin: 0; font-size: 20px; font-weight: 700;">{scout_display_name}</h3>
                                 <p style="color: white; margin: 3px 0 0 0; font-size: 11px; opacity: 0.9; letter-spacing: 1px;">SCOUT AL NASSR FC</p>
                             </div>
                         </div>
@@ -5523,590 +3124,117 @@ def show_fifa_u20_view():
                                         </div>
                                     """
                                     st.markdown(report_html, unsafe_allow_html=True)
-    
-    # Tab 7: CAMPOGRAMAS
-    with tabs[6]:
-        if st.session_state.language == 'en':
-            st.markdown("### ⚽ Campogramas (Field Maps)")
-            st.info("🚧 This section will provide tactical field analysis and heat maps.")
-        else:
-            st.markdown("### ⚽ رسوم الملعب")
-            st.info("🚧 سيوفر هذا القسم تحليلات تكتيكية للملعب وخرائط حرارية.")
-        
-        # Placeholder for campogramas
-        st.markdown("**Coming soon:** Player positioning, movement patterns, heat maps, tactical formations, etc.")
-        st.info("🚧 Campogramas will be implemented in future updates" if st.session_state.language == 'en' else "🚧 سيتم تنفيذ الرسوم التكتيكية في التحديثات القادمة")
 
-# -----------------------------
-# LOGIN SYSTEM
-# -----------------------------
-# User credentials database
-USERS = {
-    'juangambero': {
-        'password': 'juangambero',
-        'photo': 'juan.png',
-        'name': 'Juan Gambero'
-    },
-    'alvarolopez': {
-        'password': 'alvarolopez',
-        'photo': 'alvaro.png',
-        'name': 'Alvaro Lopez'
-    },
-    'rafagil': {
-        'password': 'rafagil',
-        'photo': 'rafa.png',
-        'name': 'Rafa Gil'
-    }
-}
-
+# Helper functions
 def show_login_page():
-    """Display login page with Al Nassr branding"""
+    # Users database
+    USERS = {
+        'juangambero': {
+            'password': 'juanito',
+            'name': 'Juan Gambero',
+            'photo': 'juan.png'
+        },
+        'rafagil': {
+            'password': 'rafita',
+            'name': 'Rafa Gil',
+            'photo': 'rafa.png'
+        },
+        'alvarolopez': {
+            'password': 'alvarito',
+            'name': 'Alvaro Lopez',
+            'photo': 'alvaro.png'
+        }
+    }
+    
+    # Custom CSS for login page
+    st.markdown("""
+        <style>
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 40px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        </style>
+    """, unsafe_allow_html=True)
     
     # Center the login form
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        # Load and display Al Nassr logo
+        # Load Al Nassr logo for login
         try:
             from PIL import Image
             import io
-            import base64
-            
-            logo_img = Image.open('alnassr.png')
-            logo_img.thumbnail((200, 200))
-            buffered = io.BytesIO()
-            if logo_img.mode in ('RGBA', 'LA', 'P'):
-                logo_img.save(buffered, format="PNG")
+            logo_login = Image.open('alnassr.png')
+            logo_login.thumbnail((40, 40))
+            buffered_login = io.BytesIO()
+            if logo_login.mode in ('RGBA', 'LA', 'P'):
+                logo_login.save(buffered_login, format="PNG")
             else:
-                logo_img = logo_img.convert('RGB')
-                logo_img.save(buffered, format="PNG")
-            logo_str = base64.b64encode(buffered.getvalue()).decode()
-            logo_html = f'<img src="data:image/png;base64,{logo_str}" style="width: 150px; display: block; margin: 0 auto;">'
+                logo_login = logo_login.convert('RGB')
+                logo_login.save(buffered_login, format="PNG")
+            logo_login_str = base64.b64encode(buffered_login.getvalue()).decode()
+            logo_login_html = f'<img src="data:image/png;base64,{logo_login_str}" style="height:35px; vertical-align:middle; margin-right:10px;">'
         except:
-            logo_html = '<div style="text-align: center; font-size: 80px;">⚽</div>'
+            logo_login_html = '🔐'
         
-        # Login card
-        st.markdown(f"""
-            <div style="
-                background: white;
-                border-radius: 16px;
-                padding: 40px;
-                box-shadow: 0 8px 24px rgba(0,0,0,0.15);
-                margin-top: 80px;
-                text-align: center;
-                border-top: 6px solid #FFC60A;
-            ">
-                {logo_html}
-                <h1 style="color: #1a2332; margin: 25px 0 10px 0; font-size: 28px; font-weight: 700;">INICIO DE SESIÓN</h1>
-                <p style="color: #666; font-size: 14px; margin-bottom: 30px; letter-spacing: 1.5px; text-transform: uppercase;">AL NASSR SCOUTING DEPARTMENT</p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        st.markdown(f"### {logo_login_html} FIFA U20 Scouting", unsafe_allow_html=True)
+        st.markdown("#### Login / تسجيل الدخول")
         
         # Login form
-        with st.form("login_form", clear_on_submit=False):
-            username = st.text_input(
-                "👤 Usuario",
-                placeholder="Ingresa tu usuario",
-                key="login_username"
-            )
-            password = st.text_input(
-                "🔒 Contraseña",
-                type="password",
-                placeholder="Ingresa tu contraseña",
-                key="login_password"
-            )
-            
-            col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
-            with col_btn2:
-                submit = st.form_submit_button(
-                    "🚀 INICIAR SESIÓN",
-                    use_container_width=True
-                )
-            
-            if submit:
+        username = st.text_input("👤 Username / اسم المستخدم", key="login_username")
+        password = st.text_input("🔑 Password / كلمة المرور", type="password", key="login_password")
+        
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("🚀 Login / دخول", use_container_width=True):
                 if username in USERS and USERS[username]['password'] == password:
-                    # Successful login
                     st.session_state.authenticated = True
                     st.session_state.current_user = username
                     st.session_state.user_name = USERS[username]['name']
                     st.session_state.user_photo = USERS[username]['photo']
-                    st.success(f"✅ Bienvenido, {USERS[username]['name']}!")
-                    st.balloons()
+                    st.success(f"✅ Welcome {USERS[username]['name']}!")
                     st.rerun()
                 else:
-                    st.error("❌ Usuario o contraseña incorrectos")
+                    st.error("❌ Invalid username or password / اسم المستخدم أو كلمة المرور غير صحيحة")
         
-        # Footer
-        st.markdown("""
-            <div style="text-align: center; margin-top: 40px; color: #999; font-size: 12px;">
-                <p>© 2025 Al Nassr FC - Scouting Department</p>
-                <p style="margin-top: 5px;">🔒 Sistema Seguro</p>
-            </div>
-        """, unsafe_allow_html=True)
+        with col_btn2:
+            if st.button("🔄 Clear / مسح", use_container_width=True):
+                st.rerun()
+        
+        # Info section
+        st.markdown("---")
+        st.info("🔒 Secure access for FIFA U20 scouts only")
 
 def logout():
-    """Logout user and clear session"""
+    """Logout function to clear session state"""
     st.session_state.authenticated = False
     st.session_state.current_user = None
     st.session_state.user_name = None
     st.session_state.user_photo = None
-    st.session_state.page = 'home'
     st.rerun()
 
-def show_calendar_schedule(category):
-    """Show calendar and match schedule for U21 category"""
-    
-    # Custom CSS for calendar
+def apply_custom_css():
     st.markdown("""
     <style>
-        .calendar-header {
-            background: linear-gradient(135deg, #002B5B 0%, #004080 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-            margin-bottom: 25px;
-            box-shadow: 0 4px 15px rgba(0,43,91,0.3);
-        }
-        .match-date-header {
-            background: #F9D342;
-            color: #002B5B;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-weight: bold;
-            font-size: 16px;
-            margin: 25px 0 15px 0;
-            display: inline-block;
-            box-shadow: 0 2px 8px rgba(249,211,66,0.4);
-        }
-        .match-card {
-            background: white;
-            border-left: 4px solid #F9D342;
-            border-radius: 8px;
-            padding: 18px;
-            margin-bottom: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            transition: all 0.3s ease;
-        }
-        .match-card:hover {
-            transform: translateX(5px);
-            box-shadow: 0 4px 15px rgba(249,211,66,0.3);
-            border-left-color: #002B5B;
-        }
-        .team-name {
-            font-weight: 600;
-            color: #002B5B;
-            font-size: 15px;
-        }
-        .match-score {
-            font-size: 20px;
-            font-weight: 700;
-            color: #F9D342;
-            padding: 0 15px;
-        }
-        .match-info {
-            color: #666;
-            font-size: 13px;
-            margin-top: 8px;
-        }
-        .week-badge {
-            background: #002B5B;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 15px;
-            font-size: 11px;
-            font-weight: 600;
-            display: inline-block;
-        }
+    .main { background-color: #f5f5f5; }
     </style>
     """, unsafe_allow_html=True)
-    
-    # Header with Jawwy logo
-    try:
-        from PIL import Image
-        import io
-        jawwy_logo = Image.open('jawwy.png')
-        jawwy_logo.thumbnail((60, 60))
-        buffered = io.BytesIO()
-        if jawwy_logo.mode in ('RGBA', 'LA', 'P'):
-            jawwy_logo.save(buffered, format="PNG")
-        else:
-            jawwy_logo = jawwy_logo.convert('RGB')
-            jawwy_logo.save(buffered, format="PNG")
-        jawwy_logo_str = base64.b64encode(buffered.getvalue()).decode()
-        jawwy_html = f'<img src="data:image/png;base64,{jawwy_logo_str}" style="height:50px; vertical-align:middle; margin-left:15px;">'
-    except:
-        jawwy_html = ''
-    
-    if st.session_state.language == 'en':
-        st.markdown(f"""
-            <div class="calendar-header">
-                <h2 style="margin: 0; font-size: 28px;">📅 Match Calendar & Schedule {jawwy_html}</h2>
-                <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">Saudi Elite League U-21</p>
-            </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown(f"""
-            <div class="calendar-header">
-                <h2 style="margin: 0; font-size: 28px;">{jawwy_html} 📅 تقويم ومواعيد المباريات</h2>
-                <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">الدوري السعودي النخبة تحت 21</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # U21 League ID
-    league_id = 350
-    
-    # Normalización: Nombres del scraper → Nombres completos
-    TEAM_NAMES_NORMALIZED = {
-        'Al Adalah': 'Al-Adalah FC',
-        'Al Ahli': 'Al-Ahli Saudi FC',
-        'Al Bukiryah': 'Al-Bukayriyah FC',
-        'Al Ettifaq': 'Ettifaq FC',
-        'Al Fateh': 'Al-Fateh SC',
-        'Al Fayha': 'Al-Fayha FC',
-        'Al Hazem': 'Al-Hazem FC',
-        'Al Hilal': 'Al-Hilal SFC',
-        'Al Ittihad': 'Al-Ittihad Club',
-        'Al Jabalin': 'Al-Jabalain',
-        'Al Khaleej': 'Khaleej FC',
-        'Al Kholood': 'Al-Kholood Club',
-        'Al Najmah': 'Al-Najmah SC',
-        'Al Nassr': 'Al-Nassr FC',
-        'Al Okhdood': 'Al-Okhdood FC',
-        'Al Orobah': 'Al-Orobah FC',
-        'Al Qadisiyah': 'Al-Qadsiah FC',
-        'Al Raed': 'Al-Raed FC',
-        'Al Riyadh': 'Al-Riyadh SC',
-        'Al Shabab': 'Al-Shabab FC',
-        'Al Taawoun': 'Al-Taawoun FC',
-        'Al Wehda': 'Al-Wehda FC',
-        'Damac': 'Damac FC',
-        'NEOM': 'NEOM Club'
-    }
 
-    # Nombres completos → Archivos de logos
-    TEAM_LOGOS = {
-        'Al-Wehda FC': 'alwehda.png',
-        'Al-Jabalain': 'aljabalain.png',
-        'Al-Raed FC': 'alraed.png',
-        'Al-Orobah FC': 'AlOrobah.png',
-        'Al-Adalah FC': 'aladalahclub.png',
-        'Al-Bukayriyah FC': 'albukiryahfc.png',
-        'Al-Ahli Saudi FC': 'alahli.png',
-        'Al-Nassr FC': 'alnassr.png',
-        'Al-Taawoun FC': 'altaawoun.png',
-        'Al-Shabab FC': 'alshabab.png',
-        'Al-Okhdood FC': 'alokhdood.png',
-        'Al-Riyadh SC': 'alriyadh.png',
-        'Al-Najmah SC': 'alnajma.png',
-        'NEOM Club': 'neom.png',
-        'Al-Kholood Club': 'alkholood.png',
-        'Al-Fateh SC': 'alfateh.png',
-        'Damac FC': 'damac.png',
-        'Al-Hazem FC': 'alhazem.png',
-        'Al-Fayha FC': 'alfayha.png',
-        'Ettifaq FC': 'alettifaq.png',
-        'Al-Hilal SFC': 'alhilal.png',
-        'Al-Qadsiah FC': 'alqadsiah.png',
-        'Khaleej FC': 'alkhaleej.png',
-        'Al-Ittihad Club': 'alittihad.png'
-    }
-    
-    def get_team_logo_html(team_name_from_scraper, size=24):
-        """
-        Obtiene el HTML de un logo de equipo en formato base64
-        Normaliza el nombre del equipo antes de buscar el logo
-        
-        Args:
-            team_name_from_scraper: Nombre del equipo tal como viene del scraper
-            size: Tamaño del logo en pixels
-        
-        Returns:
-            str: HTML del logo o emoji de fallback
-        """
-        # Paso 1: Normalizar el nombre (scraper → nombre completo)
-        normalized_name = TEAM_NAMES_NORMALIZED.get(team_name_from_scraper, team_name_from_scraper)
-        
-        # Paso 2: Obtener el archivo del logo
-        logo_file = TEAM_LOGOS.get(normalized_name, None)
-        
-        if logo_file:
-            try:
-                from PIL import Image
-                import io
-                import base64
-                
-                img = Image.open(logo_file)
-                img.thumbnail((size, size))
-                buffered = io.BytesIO()
-                
-                if img.mode in ('RGBA', 'LA', 'P'):
-                    img.save(buffered, format="PNG")
-                else:
-                    img = img.convert('RGB')
-                    img.save(buffered, format="PNG")
-                
-                img_str = base64.b64encode(buffered.getvalue()).decode()
-                return f'<img src="data:image/png;base64,{img_str}" style="height:{size}px; width:{size}px; object-fit:contain; margin-right:8px; vertical-align:middle;">'
-            except Exception as e:
-                # Si hay error al cargar, devolver emoji
-                return '⚽ '
-        else:
-            # Si no se encuentra el logo, devolver emoji
-            return '⚽ '
-    
-    # Load schedule with cache
-    @st.cache_data(ttl=3600)
-    def load_schedule_cached(lid):
-        return scrape_schedule(lid)
-    
-    # Loading state
-    loading_text = '🔄 Loading schedule...' if st.session_state.language == 'en' else '🔄 جاري تحميل الجدول...'
-    with st.spinner(loading_text):
-        matches = load_schedule_cached(league_id)
-    
-    if not matches:
-        error_text = "❌ Could not load schedule. Please try again later." if st.session_state.language == 'en' else "❌ تعذر تحميل الجدول. يرجى المحاولة لاحقاً."
-        st.error(error_text)
-        return
-    
-    # Stats summary
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        label1 = "🏆 Total Matches" if st.session_state.language == 'en' else "🏆 إجمالي المباريات"
-        st.metric(label1, len(matches))
-    
-    with col2:
-        unique_teams = set()
-        for m in matches:
-            unique_teams.add(m['home_team'])
-            unique_teams.add(m['away_team'])
-        label2 = "⚽ Teams" if st.session_state.language == 'en' else "⚽ الفرق"
-        st.metric(label2, len(unique_teams))
-    
-    with col3:
-        unique_dates = len(set([m['date'] for m in matches if m['date']]))
-        label3 = "📅 Match Days" if st.session_state.language == 'en' else "📅 أيام المباريات"
-        st.metric(label3, unique_dates)
-    
-    with col4:
-        played = sum(1 for m in matches if m['score'] and m['score'] != '-')
-        label4 = "✅ Played" if st.session_state.language == 'en' else "✅ تم لعبها"
-        st.metric(label4, played)
-    
-    st.markdown("---")
-    
-    # FILTERS SECTION
-    st.markdown("### 🔍 " + ("Filters" if st.session_state.language == 'en' else "الفلاتر"))
-    
-    # Extract unique values for filters
-    all_weeks = sorted(list(set([m['week'] for m in matches if m['week']])))
-    all_dates = sorted(list(set([m['date'] for m in matches if m['date']])))
-    all_teams = sorted(list(set([m['home_team'] for m in matches] + [m['away_team'] for m in matches])))
-    
-    # Create filter columns
-    col_f1, col_f2, col_f3 = st.columns(3)
-    
-    with col_f1:
-        week_label = "Week" if st.session_state.language == 'en' else "الجولة"
-        all_weeks_label = "All Weeks" if st.session_state.language == 'en' else "كل الجولات"
-        selected_week = st.selectbox(
-            f"📅 {week_label}",
-            [all_weeks_label] + all_weeks,
-            key="filter_week"
-        )
-    
-    with col_f2:
-        date_label = "Date" if st.session_state.language == 'en' else "التاريخ"
-        all_dates_label = "All Dates" if st.session_state.language == 'en' else "كل التواريخ"
-        selected_date = st.selectbox(
-            f"📆 {date_label}",
-            [all_dates_label] + all_dates,
-            key="filter_date"
-        )
-    
-    with col_f3:
-        team_label = "Team" if st.session_state.language == 'en' else "الفريق"
-        all_teams_label = "All Teams" if st.session_state.language == 'en' else "كل الفرق"
-        selected_team = st.selectbox(
-            f"⚽ {team_label}",
-            [all_teams_label] + all_teams,
-            key="filter_team"
-        )
-    
-    # Apply filters (concatenating logic - AND)
-    filtered_matches = matches.copy()
-    
-    # Filter by week
-    if selected_week != (all_weeks_label if st.session_state.language == 'en' else "كل الجولات"):
-        filtered_matches = [m for m in filtered_matches if m['week'] == selected_week]
-    
-    # Filter by date
-    if selected_date != (all_dates_label if st.session_state.language == 'en' else "كل التواريخ"):
-        filtered_matches = [m for m in filtered_matches if m['date'] == selected_date]
-    
-    # Filter by team (home or away)
-    if selected_team != (all_teams_label if st.session_state.language == 'en' else "كل الفرق"):
-        filtered_matches = [m for m in filtered_matches if m['home_team'] == selected_team or m['away_team'] == selected_team]
-    
-    # Show filtered results count
-    if st.session_state.language == 'en':
-        st.info(f"📊 Showing **{len(filtered_matches)}** of **{len(matches)}** matches")
-    else:
-        st.info(f"📊 عرض **{len(filtered_matches)}** من **{len(matches)}** مباراة")
-    
-    st.markdown("---")
-    
-    # Download buttons (for filtered data)
-    df_matches = pd.DataFrame(filtered_matches)
-    download_label = "Download Schedule" if st.session_state.language == 'en' else "تحميل الجدول"
-    create_download_buttons(
-        df_matches,
-        filename_base="U21_calendar_filtered",
-        label_prefix=download_label
+def create_download_buttons(df, filename_base, label_prefix):
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label=f"{label_prefix} CSV",
+        data=csv,
+        file_name=f"{filename_base}.csv",
+        mime="text/csv"
     )
-    
-    st.markdown("---")
-    
-    # Display filtered matches grouped by date
-    current_date = ""
-    
-    for match in filtered_matches:
-        # Date header when date changes
-        if match['date'] != current_date:
-            current_date = match['date']
-            st.markdown(f"""
-                <div class="match-date-header">
-                    📅 {current_date}
-                </div>
-            """, unsafe_allow_html=True)
-        
-        # Get team logos (pasando los nombres tal como vienen del scraper)
-        home_logo = get_team_logo_html(match['home_team'], size=28)
-        away_logo = get_team_logo_html(match['away_team'], size=28)
-        
-        # Match card
-        st.markdown(f"""
-            <div class="match-card">
-                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-                    <div style="flex: 1; min-width: 350px;">
-                        <div style="display: flex; align-items: center; gap: 5px;">
-                            {home_logo}
-                            <span class="team-name">{match['home_team']}</span>
-                            <span class="match-score">{match['score']}</span>
-                            {away_logo}
-                            <span class="team-name">{match['away_team']}</span>
-                        </div>
-                    </div>
-                    <div style="text-align: right;">
-                        <span class="week-badge">{match['week']}</span>
-                    </div>
-                </div>
-                <div class="match-info">
-                    ⏰ {match['time']} | 🏟️ {match['stadium']}
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
 
-# -----------------------------
-# MAIN APPLICATION
-# -----------------------------
-def main():
-    # Initialize authentication state
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
-    if 'current_user' not in st.session_state:
-        st.session_state.current_user = None
-    if 'user_name' not in st.session_state:
-        st.session_state.user_name = None
-    if 'user_photo' not in st.session_state:
-        st.session_state.user_photo = None
-    
-    # Check authentication
-    if not st.session_state.authenticated:
-        show_login_page()
-        return
-    
-    # Apply styling
-    apply_custom_css()
-    
-    # Language toggle button in sidebar
-    with st.sidebar:
-        # User info at top
-        if st.session_state.user_name:
-            try:
-                from PIL import Image
-                import io
-                import base64
-                
-                user_img = Image.open(st.session_state.user_photo)
-                user_img.thumbnail((60, 60))
-                buffered = io.BytesIO()
-                if user_img.mode in ('RGBA', 'LA', 'P'):
-                    user_img.save(buffered, format="PNG")
-                else:
-                    user_img = user_img.convert('RGB')
-                    user_img.save(buffered, format="PNG")
-                user_img_str = base64.b64encode(buffered.getvalue()).decode()
-                user_photo_html = f'<img src="data:image/png;base64,{user_img_str}" style="width: 50px; height: 50px; border-radius: 50%; border: 3px solid #FFC60A; object-fit: cover;">'
-            except:
-                user_photo_html = '👤'
-            
-            st.markdown(f"""
-                <div style="
-                    background: linear-gradient(135deg, #1a2332 0%, #2d3e50 100%);
-                    padding: 15px;
-                    border-radius: 10px;
-                    text-align: center;
-                    margin-bottom: 20px;
-                    border: 2px solid #FFC60A;
-                ">
-                    {user_photo_html}
-                    <p style="color: white; margin: 10px 0 0 0; font-weight: 600; font-size: 14px;">{st.session_state.user_name}</p>
-                    <p style="color: #FFC60A; margin: 3px 0 0 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px;">SCOUT</p>
-                </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("### Settings / الإعدادات")
-        if st.button("🇸🇦 عربي" if st.session_state.language == 'en' else "🇬🇧 English",
-                    key="lang_toggle",
-                    help="Toggle Language",
-                    use_container_width=True):
-            toggle_language()
-        
-        st.markdown("---")
-        
-        # Navigation
-        if st.session_state.page != 'home':
-            if st.button("🏠 " + ("Home" if st.session_state.language == 'en' else "الرئيسية"), 
-                        key="btn_home",
-                        use_container_width=True):
-                st.session_state.page = 'home'
-                st.rerun()
-        
-        st.markdown("---")
-        
-        # Logout button
-        if st.button("🚪 Cerrar Sesión", key="btn_logout", use_container_width=True, type="secondary"):
-            logout()
-    
-    # Show appropriate page based on session state
-    if st.session_state.page == 'home':
-        show_home_page()
-    elif st.session_state.page == 'categories':
-        show_categories_page()
-    elif st.session_state.page == 'category_view':
-        show_category_view()
-    elif st.session_state.page == 'fifa_u20':
-        show_fifa_u20_view()
-    elif st.session_state.page == 'advanced_data':
-        show_advanced_data_analysis(None)
+# Country flags mapping
+COUNTRY_FLAGS = {}
 
-# -----------------------------
-# RUN APPLICATION
-# -----------------------------
 if __name__ == "__main__":
     main()
