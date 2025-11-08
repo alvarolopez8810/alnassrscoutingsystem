@@ -949,11 +949,16 @@ def show_fifa_u17_view():
                                                     
                                                     # Get Position (Position column)
                                                     pos_value = player_data_db.iloc[0].get('Position', '')
+                                                    print(f"🔍 DEBUG Position - Valor crudo: '{pos_value}' | Tipo: {type(pos_value)} | pd.notna: {pd.notna(pos_value)}")
+                                                    
                                                     if pd.notna(pos_value) and str(pos_value).strip():
                                                         pos_raw = str(pos_value).strip()
                                                         st.session_state.home_match_players[idx]['position'] = pos_raw
                                                         print(f"  ✓ Posición: {pos_raw}")
                                                         st.toast(f"✓ Posición: {pos_raw}", icon="⚽")
+                                                    else:
+                                                        print(f"  ⚠️ Posición vacía o inválida")
+                                                        st.toast(f"⚠️ Posición no disponible en BD", icon="⚠️")
                                                     
                                                     # Get Number (Num column)
                                                     number_value = player_data_db.iloc[0].get('Num', '')
@@ -974,7 +979,7 @@ def show_fifa_u17_view():
                                     "#",
                                     min_value=1,
                                     max_value=99,
-                                    value=player_data.get('number', 1),
+                                    value=st.session_state.home_match_players[idx].get('number', 1),
                                     key=f"home_p_num_{idx}"
                                 )
                                 st.session_state.home_match_players[idx]['number'] = player_number
@@ -989,8 +994,8 @@ def show_fifa_u17_view():
                                     default_pos = home_player_positions.get(selected_player, "")
                                     if default_pos in positions_list:
                                         position_index = positions_list.index(default_pos)
-                                    elif player_data.get('position') in positions_list:
-                                        position_index = positions_list.index(player_data['position'])
+                                    elif st.session_state.home_match_players[idx].get('position') in positions_list:
+                                        position_index = positions_list.index(st.session_state.home_match_players[idx]['position'])
                                 
                                 player_position = st.selectbox(
                                     "Position",
@@ -1005,7 +1010,7 @@ def show_fifa_u17_view():
                                 "🎂 AÑO (Birth Year)",
                                 min_value=1990,
                                 max_value=2015,
-                                value=player_data.get('birth_year', 2005),
+                                value=st.session_state.home_match_players[idx].get('birth_year', 2005),
                                 step=1,
                                 key=f"home_p_year_{idx}"
                             )
@@ -1184,7 +1189,7 @@ def show_fifa_u17_view():
                                     "#",
                                     min_value=1,
                                     max_value=99,
-                                    value=player_data.get('number', 1),
+                                    value=st.session_state.away_match_players[idx].get('number', 1),
                                     key=f"away_p_num_{idx}"
                                 )
                                 st.session_state.away_match_players[idx]['number'] = player_number
@@ -1199,8 +1204,8 @@ def show_fifa_u17_view():
                                     default_pos = away_player_positions.get(selected_player, "")
                                     if default_pos in positions_list:
                                         position_index = positions_list.index(default_pos)
-                                    elif player_data.get('position') in positions_list:
-                                        position_index = positions_list.index(player_data['position'])
+                                    elif st.session_state.away_match_players[idx].get('position') in positions_list:
+                                        position_index = positions_list.index(st.session_state.away_match_players[idx]['position'])
                                 
                                 player_position = st.selectbox(
                                     "Position",
@@ -1215,7 +1220,7 @@ def show_fifa_u17_view():
                                 "🎂 AÑO (Birth Year)",
                                 min_value=1990,
                                 max_value=2015,
-                                value=player_data.get('birth_year', 2005),
+                                value=st.session_state.away_match_players[idx].get('birth_year', 2005),
                                 step=1,
                                 key=f"away_p_year_{idx}"
                             )
