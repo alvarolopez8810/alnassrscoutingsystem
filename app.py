@@ -949,12 +949,14 @@ def show_fifa_u17_view():
                                             st.warning("⚠️ Selecciona un jugador primero")
                             
                             with col2:
+                                # Use dynamic key based on player name to force widget refresh
+                                player_name_key = selected_player.replace(' ', '_') if selected_player else 'empty'
                                 player_number = st.number_input(
                                     "#",
                                     min_value=1,
                                     max_value=99,
                                     value=st.session_state.home_match_players[idx].get('number', 1),
-                                    key=f"home_p_num_{idx}"
+                                    key=f"home_p_num_{idx}_{player_name_key}"
                                 )
                                 st.session_state.home_match_players[idx]['number'] = player_number
                             
@@ -975,18 +977,18 @@ def show_fifa_u17_view():
                                     "Position",
                                     positions_list,
                                     index=position_index,
-                                    key=f"home_p_pos_{idx}"
+                                    key=f"home_p_pos_{idx}_{player_name_key}"
                                 )
                                 st.session_state.home_match_players[idx]['position'] = player_position
                             
-                            # Birth Year
+                            # Birth Year - use dynamic key
                             birth_year = st.number_input(
                                 "🎂 AÑO (Birth Year)",
                                 min_value=1990,
                                 max_value=2015,
                                 value=st.session_state.home_match_players[idx].get('birth_year', 2005),
                                 step=1,
-                                key=f"home_p_year_{idx}"
+                                key=f"home_p_year_{idx}_{player_name_key}"
                             )
                             st.session_state.home_match_players[idx]['birth_year'] = birth_year
                             
@@ -1144,12 +1146,14 @@ def show_fifa_u17_view():
                                             st.warning("⚠️ Selecciona un jugador primero")
                             
                             with col2:
+                                # Use dynamic key based on player name to force widget refresh
+                                player_name_key = selected_player.replace(' ', '_') if selected_player else 'empty'
                                 player_number = st.number_input(
                                     "#",
                                     min_value=1,
                                     max_value=99,
                                     value=st.session_state.away_match_players[idx].get('number', 1),
-                                    key=f"away_p_num_{idx}"
+                                    key=f"away_p_num_{idx}_{player_name_key}"
                                 )
                                 st.session_state.away_match_players[idx]['number'] = player_number
                             
@@ -1170,18 +1174,18 @@ def show_fifa_u17_view():
                                     "Position",
                                     positions_list,
                                     index=position_index,
-                                    key=f"away_p_pos_{idx}"
+                                    key=f"away_p_pos_{idx}_{player_name_key}"
                                 )
                                 st.session_state.away_match_players[idx]['position'] = player_position
                             
-                            # Birth Year
+                            # Birth Year - use dynamic key
                             birth_year_away = st.number_input(
                                 "🎂 AÑO (Birth Year)",
                                 min_value=1990,
                                 max_value=2015,
                                 value=st.session_state.away_match_players[idx].get('birth_year', 2005),
                                 step=1,
-                                key=f"away_p_year_{idx}"
+                                key=f"away_p_year_{idx}_{player_name_key}"
                             )
                             st.session_state.away_match_players[idx]['birth_year'] = birth_year_away
                             
