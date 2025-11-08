@@ -890,6 +890,9 @@ def show_fifa_u17_view():
                         with st.expander(f"👤 Player {idx+1}: {display_name}", expanded=True):
                             col1, col2, col3 = st.columns([3, 1, 2])
                             
+                            # Auto-completar ANTES de crear los widgets
+                            current_name = player_data.get('name', '')
+                            
                             with col1:
                                 selected_player = st.selectbox(
                                     "Player Name",
@@ -897,71 +900,74 @@ def show_fifa_u17_view():
                                     index=0 if not player_data['name'] else (home_players.index(player_data['name']) + 1 if player_data['name'] in home_players else 0),
                                     key=f"home_p_name_{idx}"
                                 )
-                                # Update name if changed
-                                current_name = player_data.get('name', '')
+                                
+                                # Si cambió el jugador, actualizar y autocompletar
                                 if selected_player != current_name:
                                     st.session_state.home_match_players[idx]['name'] = selected_player
-                                
-                                # Auto-completar datos del jugador cuando se selecciona (siempre que haya jugador)
-                                if selected_player and selected_player != current_name:
-                                    # 1. Buscar número anterior en reportes previos
-                                    try:
-                                        prev_reports = read_google_sheet('fifa_u17_match_reports', 'Sheet1')
-                                        player_prev_reports = prev_reports[prev_reports['Player Name'] == selected_player]
-                                        if not player_prev_reports.empty:
-                                            # Obtener el número más reciente
-                                            last_number = prev_reports.iloc[-1]['Number']
-                                            if pd.notna(last_number):
-                                                st.session_state.home_match_players[idx]['number'] = int(last_number)
-                                    except:
-                                        pass
                                     
-                                    # 2. Buscar año de nacimiento, posición y número en la base de datos
-                                    try:
-                                        print(f"🔍 Buscando datos para jugador: {selected_player}")
-                                        df_players_db = read_google_sheet('WorldCupU17Data', 'Sheet1')
+                                    if selected_player:  # Solo si hay un jugador seleccionado
+                                        # 1. Buscar número anterior en reportes previos
+                                        try:
+                                            prev_reports = read_google_sheet('fifa_u17_match_reports', 'Sheet1')
+                                            if prev_reports is not None and not prev_reports.empty:
+                                                player_prev_reports = prev_reports[prev_reports['Player Name'] == selected_player]
+                                                if not player_prev_reports.empty:
+                                                    last_number = player_prev_reports.iloc[-1]['Number']
+                                                    if pd.notna(last_number):
+                                                        st.session_state.home_match_players[idx]['number'] = int(last_number)
+                                        except:
+                                            pass
                                         
-                                        if df_players_db is not None and not df_players_db.empty:
-                                            print(f"✅ Google Sheet cargado: {len(df_players_db)} jugadores")
+                                        # 2. Buscar año de nacimiento, posición y número en la base de datos
+                                        try:
+                                            print(f"🔍 Buscando datos para jugador: {selected_player}")
+                                            df_players_db = read_google_sheet('WorldCupU17Data', 'Sheet1')
                                             
-                                            # Detect column name for player name
-                                            name_col = 'PLAYER NAME' if 'PLAYER NAME' in df_players_db.columns else 'Player Name'
-                                            
-                                            # Use PLAYER NAME column from database
-                                            player_data_db = df_players_db[df_players_db[name_col].str.strip().str.lower() == selected_player.strip().lower()]
-                                            
-                                            if not player_data_db.empty:
-                                                print(f"✅ Jugador encontrado! Autocompletando datos...")
+                                            if df_players_db is not None and not df_players_db.empty:
+                                                print(f"✅ Google Sheet cargado: {len(df_players_db)} jugadores")
                                                 
-                                                # Get DOB and extract year
-                                                dob_value = player_data_db.iloc[0].get('DOB', '')
-                                                if pd.notna(dob_value) and str(dob_value).strip():
-                                                    birth_year_val = str(dob_value).split('/')[-1] if '/' in str(dob_value) else str(dob_value)[:4]
-                                                    try:
-                                                        st.session_state.home_match_players[idx]['birth_year'] = int(birth_year_val)
-                                                        print(f"  ✓ Año: {birth_year_val}")
-                                                    except:
-                                                        pass
+                                                # Detect column name for player name
+                                                name_col = 'PLAYER NAME' if 'PLAYER NAME' in df_players_db.columns else 'Player Name'
                                                 
-                                                # Get Position (Position column)
-                                                pos_value = player_data_db.iloc[0].get('Position', '')
-                                                if pd.notna(pos_value) and str(pos_value).strip():
-                                                    pos_raw = str(pos_value).strip()
-                                                    st.session_state.home_match_players[idx]['position'] = pos_raw
-                                                    print(f"  ✓ Posición: {pos_raw}")
+                                                # Use PLAYER NAME column from database
+                                                player_data_db = df_players_db[df_players_db[name_col].str.strip().str.lower() == selected_player.strip().lower()]
                                                 
-                                                # Get Number (Num column)
-                                                number_value = player_data_db.iloc[0].get('Num', '')
-                                                if pd.notna(number_value) and str(number_value).strip():
-                                                    try:
-                                                        st.session_state.home_match_players[idx]['number'] = int(float(number_value))
-                                                        print(f"  ✓ Número: {number_value}")
-                                                    except:
-                                                        pass
-                                    except Exception as e:
-                                        print(f"❌ Error autocompletando datos del jugador: {e}")
-                                    
-                                    st.rerun()
+                                                if not player_data_db.empty:
+                                                    print(f"✅ Jugador encontrado! Autocompletando datos...")
+                                                    st.toast(f"✅ Jugador encontrado en BD!", icon="✅")
+                                                    
+                                                    # Get DOB and extract year
+                                                    dob_value = player_data_db.iloc[0].get('DOB', '')
+                                                    if pd.notna(dob_value) and str(dob_value).strip():
+                                                        birth_year_val = str(dob_value).split('/')[-1] if '/' in str(dob_value) else str(dob_value)[:4]
+                                                        try:
+                                                            st.session_state.home_match_players[idx]['birth_year'] = int(birth_year_val)
+                                                            print(f"  ✓ Año: {birth_year_val}")
+                                                            st.toast(f"✓ Año: {birth_year_val}", icon="📅")
+                                                        except:
+                                                            pass
+                                                    
+                                                    # Get Position (Position column)
+                                                    pos_value = player_data_db.iloc[0].get('Position', '')
+                                                    if pd.notna(pos_value) and str(pos_value).strip():
+                                                        pos_raw = str(pos_value).strip()
+                                                        st.session_state.home_match_players[idx]['position'] = pos_raw
+                                                        print(f"  ✓ Posición: {pos_raw}")
+                                                        st.toast(f"✓ Posición: {pos_raw}", icon="⚽")
+                                                    
+                                                    # Get Number (Num column)
+                                                    number_value = player_data_db.iloc[0].get('Num', '')
+                                                    if pd.notna(number_value) and str(number_value).strip():
+                                                        try:
+                                                            st.session_state.home_match_players[idx]['number'] = int(float(number_value))
+                                                            print(f"  ✓ Número: {number_value}")
+                                                            st.toast(f"✓ Número: {number_value}", icon="🔢")
+                                                        except:
+                                                            pass
+                                        except Exception as e:
+                                            print(f"❌ Error autocompletando datos del jugador: {e}")
+                                        
+                                        st.rerun()
                             
                             with col2:
                                 player_number = st.number_input(
