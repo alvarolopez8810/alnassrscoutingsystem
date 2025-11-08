@@ -123,7 +123,7 @@ def get_google_sheets_client():
         traceback.print_exc()
         return None
 
-@st.cache_data(ttl=300, show_spinner=False)  # Cache for 5 minutes (300 seconds) to reduce API calls
+@st.cache_data(ttl=20, show_spinner=False)  # Cache for 20 seconds to avoid stale data in Render
 def read_google_sheet(sheet_name, worksheet_name='Sheet1', max_retries=2):
     """Read data from Google Sheet and return as DataFrame with retry logic"""
     import time
@@ -423,6 +423,15 @@ def main():
                         use_container_width=True):
                 st.session_state.page = 'home'
                 st.rerun()
+        
+        st.markdown("---")
+        
+        # Clear Cache button for debugging
+        st.markdown("### 🔧 Debug Tools")
+        if st.button("🔄 Clear Cache", key="btn_clear_cache", use_container_width=True, help="Clear cached data to force refresh from Google Sheets"):
+            st.cache_data.clear()
+            st.success("✅ Cache cleared! Data will refresh on next load.")
+            st.rerun()
         
         st.markdown("---")
         
@@ -896,43 +905,46 @@ def show_fifa_u17_view():
                                     st.markdown("<br>", unsafe_allow_html=True)
                                     if st.button("🔄", key=f"home_autofill_{idx}", help="Autocompletar desde BD"):
                                         if selected_player:
-                                            try:
-                                                # Always use Google Sheets
-                                                df_players_db = read_google_sheet('WorldCupU17Data', 'Sheet1')
-                                                
-                                                if df_players_db is not None and not df_players_db.empty:
-                                                    name_col = 'PLAYER NAME' if 'PLAYER NAME' in df_players_db.columns else 'Player Name'
-                                                    player_db = df_players_db[df_players_db[name_col].str.strip().str.lower() == selected_player.strip().lower()]
+                                            with st.spinner(f"🔍 Loading data for {selected_player}..."):
+                                                try:
+                                                    # Always use Google Sheets
+                                                    df_players_db = read_google_sheet('WorldCupU17Data', 'Sheet1')
                                                     
-                                                    if not player_db.empty:
-                                                        # DOB -> birth_year
-                                                        dob = player_db.iloc[0].get('DOB', '')
-                                                        if pd.notna(dob) and str(dob).strip():
-                                                            year = str(dob).split('/')[-1] if '/' in str(dob) else str(dob)[:4]
-                                                            try:
-                                                                st.session_state.home_match_players[idx]['birth_year'] = int(year)
-                                                            except:
-                                                                pass
+                                                    if df_players_db is not None and not df_players_db.empty:
+                                                        name_col = 'PLAYER NAME' if 'PLAYER NAME' in df_players_db.columns else 'Player Name'
+                                                        player_db = df_players_db[df_players_db[name_col].str.strip().str.lower() == selected_player.strip().lower()]
                                                         
-                                                        # Position
-                                                        pos = player_db.iloc[0].get('Position', '')
-                                                        if pd.notna(pos) and str(pos).strip():
-                                                            st.session_state.home_match_players[idx]['position'] = str(pos).strip()
-                                                        
-                                                        # Num -> number
-                                                        num = player_db.iloc[0].get('Num', '')
-                                                        if pd.notna(num) and str(num).strip():
-                                                            try:
-                                                                st.session_state.home_match_players[idx]['number'] = int(float(num))
-                                                            except:
-                                                                pass
-                                                        
-                                                        st.success("✅ Datos autocompletados!")
-                                                        st.rerun()
+                                                        if not player_db.empty:
+                                                            # DOB -> birth_year
+                                                            dob = player_db.iloc[0].get('DOB', '')
+                                                            if pd.notna(dob) and str(dob).strip():
+                                                                year = str(dob).split('/')[-1] if '/' in str(dob) else str(dob)[:4]
+                                                                try:
+                                                                    st.session_state.home_match_players[idx]['birth_year'] = int(year)
+                                                                except:
+                                                                    pass
+                                                            
+                                                            # Position
+                                                            pos = player_db.iloc[0].get('Position', '')
+                                                            if pd.notna(pos) and str(pos).strip():
+                                                                st.session_state.home_match_players[idx]['position'] = str(pos).strip()
+                                                            
+                                                            # Num -> number
+                                                            num = player_db.iloc[0].get('Num', '')
+                                                            if pd.notna(num) and str(num).strip():
+                                                                try:
+                                                                    st.session_state.home_match_players[idx]['number'] = int(float(num))
+                                                                except:
+                                                                    pass
+                                                            
+                                                            st.success(f"✅ Data loaded for {selected_player}")
+                                                            st.rerun()
+                                                        else:
+                                                            st.warning(f"⚠️ Player {selected_player} not found in database")
                                                     else:
-                                                        st.warning("⚠️ Jugador no encontrado en BD")
-                                            except Exception as e:
-                                                st.error(f"❌ Error: {e}")
+                                                        st.error("❌ WorldCupU17Data is empty or not loaded")
+                                                except Exception as e:
+                                                    st.error(f"❌ Error loading player data: {str(e)}")
                                         else:
                                             st.warning("⚠️ Selecciona un jugador primero")
                             
@@ -1088,43 +1100,46 @@ def show_fifa_u17_view():
                                     st.markdown("<br>", unsafe_allow_html=True)
                                     if st.button("🔄", key=f"away_autofill_{idx}", help="Autocompletar desde BD"):
                                         if selected_player:
-                                            try:
-                                                # Always use Google Sheets
-                                                df_players_db = read_google_sheet('WorldCupU17Data', 'Sheet1')
-                                                
-                                                if df_players_db is not None and not df_players_db.empty:
-                                                    name_col = 'PLAYER NAME' if 'PLAYER NAME' in df_players_db.columns else 'Player Name'
-                                                    player_db = df_players_db[df_players_db[name_col].str.strip().str.lower() == selected_player.strip().lower()]
+                                            with st.spinner(f"🔍 Loading data for {selected_player}..."):
+                                                try:
+                                                    # Always use Google Sheets
+                                                    df_players_db = read_google_sheet('WorldCupU17Data', 'Sheet1')
                                                     
-                                                    if not player_db.empty:
-                                                        # DOB -> birth_year
-                                                        dob = player_db.iloc[0].get('DOB', '')
-                                                        if pd.notna(dob) and str(dob).strip():
-                                                            year = str(dob).split('/')[-1] if '/' in str(dob) else str(dob)[:4]
-                                                            try:
-                                                                st.session_state.away_match_players[idx]['birth_year'] = int(year)
-                                                            except:
-                                                                pass
+                                                    if df_players_db is not None and not df_players_db.empty:
+                                                        name_col = 'PLAYER NAME' if 'PLAYER NAME' in df_players_db.columns else 'Player Name'
+                                                        player_db = df_players_db[df_players_db[name_col].str.strip().str.lower() == selected_player.strip().lower()]
                                                         
-                                                        # Position
-                                                        pos = player_db.iloc[0].get('Position', '')
-                                                        if pd.notna(pos) and str(pos).strip():
-                                                            st.session_state.away_match_players[idx]['position'] = str(pos).strip()
-                                                        
-                                                        # Num -> number
-                                                        num = player_db.iloc[0].get('Num', '')
-                                                        if pd.notna(num) and str(num).strip():
-                                                            try:
-                                                                st.session_state.away_match_players[idx]['number'] = int(float(num))
-                                                            except:
-                                                                pass
-                                                        
-                                                        st.success("✅ Datos autocompletados!")
-                                                        st.rerun()
+                                                        if not player_db.empty:
+                                                            # DOB -> birth_year
+                                                            dob = player_db.iloc[0].get('DOB', '')
+                                                            if pd.notna(dob) and str(dob).strip():
+                                                                year = str(dob).split('/')[-1] if '/' in str(dob) else str(dob)[:4]
+                                                                try:
+                                                                    st.session_state.away_match_players[idx]['birth_year'] = int(year)
+                                                                except:
+                                                                    pass
+                                                            
+                                                            # Position
+                                                            pos = player_db.iloc[0].get('Position', '')
+                                                            if pd.notna(pos) and str(pos).strip():
+                                                                st.session_state.away_match_players[idx]['position'] = str(pos).strip()
+                                                            
+                                                            # Num -> number
+                                                            num = player_db.iloc[0].get('Num', '')
+                                                            if pd.notna(num) and str(num).strip():
+                                                                try:
+                                                                    st.session_state.away_match_players[idx]['number'] = int(float(num))
+                                                                except:
+                                                                    pass
+                                                            
+                                                            st.success(f"✅ Data loaded for {selected_player}")
+                                                            st.rerun()
+                                                        else:
+                                                            st.warning(f"⚠️ Player {selected_player} not found in database")
                                                     else:
-                                                        st.warning("⚠️ Jugador no encontrado en BD")
-                                            except Exception as e:
-                                                st.error(f"❌ Error: {e}")
+                                                        st.error("❌ WorldCupU17Data is empty or not loaded")
+                                                except Exception as e:
+                                                    st.error(f"❌ Error loading player data: {str(e)}")
                                         else:
                                             st.warning("⚠️ Selecciona un jugador primero")
                             
