@@ -9,7 +9,6 @@ import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
-from streamlit_searchbox import st_searchbox
 # from generate_individual_pdf import generate_individual_report_pdf
 
 # File locking utilities for concurrent access
@@ -267,20 +266,6 @@ def append_to_google_sheet(df_new, sheet_name, worksheet_name='Sheet1'):
         import traceback
         traceback.print_exc()
         return False
-
-# Search function for player searchbox
-def search_players(searchterm: str, players_list: list) -> list:
-    """
-    Search function for st_searchbox that filters players based on search term
-    """
-    if not searchterm:
-        return players_list[:20]  # Return first 20 if no search term
-    
-    # Filter players that contain the search term (case insensitive)
-    searchterm_lower = searchterm.lower()
-    filtered = [p for p in players_list if searchterm_lower in p.lower()]
-    
-    return filtered[:20]  # Return max 20 results
 
 def find_player_photo(player_name):
     """Find player photo with different extensions and name formats"""
