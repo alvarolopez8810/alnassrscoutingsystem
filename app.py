@@ -9,6 +9,7 @@ import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
+from streamlit_searchbox import st_searchbox
 # from generate_individual_pdf import generate_individual_report_pdf
 
 # File locking utilities for concurrent access
@@ -266,6 +267,20 @@ def append_to_google_sheet(df_new, sheet_name, worksheet_name='Sheet1'):
         import traceback
         traceback.print_exc()
         return False
+
+# Search function for player searchbox
+def search_players(searchterm: str, players_list: list) -> list:
+    """
+    Search function for st_searchbox that filters players based on search term
+    """
+    if not searchterm:
+        return players_list[:20]  # Return first 20 if no search term
+    
+    # Filter players that contain the search term (case insensitive)
+    searchterm_lower = searchterm.lower()
+    filtered = [p for p in players_list if searchterm_lower in p.lower()]
+    
+    return filtered[:20]  # Return max 20 results
 
 def find_player_photo(player_name):
     """Find player photo with different extensions and name formats"""
@@ -900,13 +915,57 @@ def show_fifa_u17_view():
                             with col1:
                                 col_name, col_btn = st.columns([4, 1])
                                 with col_name:
+                                    # Get current index
+                                    current_name = player_data.get('name', '')
+                                    if current_name and current_name in home_players:
+                                        current_index = home_players.index(current_name) + 1
+                                    else:
+                                        current_index = 0
+                                    
                                     selected_player = st.selectbox(
                                         "Player Name",
                                         [""] + home_players,
-                                        index=0 if not player_data['name'] else (home_players.index(player_data['name']) + 1 if player_data['name'] in home_players else 0),
+                                        index=current_index,
                                         key=f"home_p_name_{idx}"
                                     )
-                                    st.session_state.home_match_players[idx]['name'] = selected_player
+                                    
+                                    # Auto-fill when player is selected
+                                    if selected_player and selected_player != player_data.get('name', ''):
+                                        st.session_state.home_match_players[idx]['name'] = selected_player
+                                        # Auto-fill from database
+                                        try:
+                                            df_players_db = read_google_sheet('WorldCupU17Data', 'Sheet1')
+                                            if df_players_db is not None and not df_players_db.empty:
+                                                name_col = 'PLAYER NAME' if 'PLAYER NAME' in df_players_db.columns else 'Player Name'
+                                                player_db = df_players_db[df_players_db[name_col].str.strip().str.lower() == selected_player.strip().lower()]
+                                                
+                                                if not player_db.empty:
+                                                    # Auto-fill DOB -> birth_year
+                                                    dob = player_db.iloc[0].get('DOB', '')
+                                                    if pd.notna(dob) and str(dob).strip():
+                                                        year = str(dob).split('/')[-1] if '/' in str(dob) else str(dob)[:4]
+                                                        try:
+                                                            year_int = int(year)
+                                                            st.session_state.home_match_players[idx]['birth_year'] = year_int
+                                                        except:
+                                                            pass
+                                                    
+                                                    # Auto-fill Position
+                                                    pos = player_db.iloc[0].get('POS', '')
+                                                    if pd.notna(pos) and str(pos).strip():
+                                                        st.session_state.home_match_players[idx]['position'] = str(pos).strip()
+                                                    
+                                                    # Auto-fill Number
+                                                    num = player_db.iloc[0].get('Num', '')
+                                                    if pd.notna(num) and str(num).strip():
+                                                        try:
+                                                            st.session_state.home_match_players[idx]['number'] = int(num)
+                                                        except:
+                                                            pass
+                                        except:
+                                            pass
+                                    elif selected_player:
+                                        st.session_state.home_match_players[idx]['name'] = selected_player
                                 
                                 with col_btn:
                                     st.markdown("<br>", unsafe_allow_html=True)
@@ -1111,13 +1170,57 @@ def show_fifa_u17_view():
                             with col1:
                                 col_name, col_btn = st.columns([4, 1])
                                 with col_name:
+                                    # Get current index
+                                    current_name = player_data.get('name', '')
+                                    if current_name and current_name in away_players:
+                                        current_index = away_players.index(current_name) + 1
+                                    else:
+                                        current_index = 0
+                                    
                                     selected_player = st.selectbox(
                                         "Player Name",
                                         [""] + away_players,
-                                        index=0 if not player_data['name'] else (away_players.index(player_data['name']) + 1 if player_data['name'] in away_players else 0),
+                                        index=current_index,
                                         key=f"away_p_name_{idx}"
                                     )
-                                    st.session_state.away_match_players[idx]['name'] = selected_player
+                                    
+                                    # Auto-fill when player is selected
+                                    if selected_player and selected_player != player_data.get('name', ''):
+                                        st.session_state.away_match_players[idx]['name'] = selected_player
+                                        # Auto-fill from database
+                                        try:
+                                            df_players_db = read_google_sheet('WorldCupU17Data', 'Sheet1')
+                                            if df_players_db is not None and not df_players_db.empty:
+                                                name_col = 'PLAYER NAME' if 'PLAYER NAME' in df_players_db.columns else 'Player Name'
+                                                player_db = df_players_db[df_players_db[name_col].str.strip().str.lower() == selected_player.strip().lower()]
+                                                
+                                                if not player_db.empty:
+                                                    # Auto-fill DOB -> birth_year
+                                                    dob = player_db.iloc[0].get('DOB', '')
+                                                    if pd.notna(dob) and str(dob).strip():
+                                                        year = str(dob).split('/')[-1] if '/' in str(dob) else str(dob)[:4]
+                                                        try:
+                                                            year_int = int(year)
+                                                            st.session_state.away_match_players[idx]['birth_year'] = year_int
+                                                        except:
+                                                            pass
+                                                    
+                                                    # Auto-fill Position
+                                                    pos = player_db.iloc[0].get('POS', '')
+                                                    if pd.notna(pos) and str(pos).strip():
+                                                        st.session_state.away_match_players[idx]['position'] = str(pos).strip()
+                                                    
+                                                    # Auto-fill Number
+                                                    num = player_db.iloc[0].get('Num', '')
+                                                    if pd.notna(num) and str(num).strip():
+                                                        try:
+                                                            st.session_state.away_match_players[idx]['number'] = int(num)
+                                                        except:
+                                                            pass
+                                        except:
+                                            pass
+                                    elif selected_player:
+                                        st.session_state.away_match_players[idx]['name'] = selected_player
                                 
                                 with col_btn:
                                     st.markdown("<br>", unsafe_allow_html=True)
@@ -4015,6 +4118,27 @@ def apply_custom_css():
     st.markdown("""
     <style>
     .main { background-color: #f5f5f5; }
+    
+    /* Mejorar el selectbox para que sea más fácil de usar */
+    .stSelectbox > div > div {
+        cursor: pointer;
+    }
+    
+    /* Hacer el dropdown más grande y visible */
+    [data-baseweb="select"] {
+        cursor: pointer;
+    }
+    
+    /* Mejorar la visibilidad del input de búsqueda en el selectbox */
+    [data-baseweb="popover"] {
+        z-index: 9999 !important;
+    }
+    
+    /* Estilo para el input de búsqueda dentro del selectbox */
+    [data-baseweb="select"] input {
+        font-size: 14px !important;
+        padding: 8px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
