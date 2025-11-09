@@ -888,6 +888,13 @@ def show_fifa_u17_view():
                         display_name = current_name if current_name else 'Not selected'
                         
                         with st.expander(f"👤 Player {idx+1}: {display_name}", expanded=True):
+                            # Check if we just autofilled this player
+                            autofill_key = f"autofilled_home_{idx}"
+                            just_autofilled = st.session_state.get(autofill_key, False)
+                            if just_autofilled:
+                                st.success(f"✅ Auto-filled data for {player_data.get('name', 'player')}")
+                                st.session_state[autofill_key] = False  # Reset flag
+                            
                             col1, col2, col3 = st.columns([3, 1, 2])
                             
                             with col1:
@@ -920,24 +927,31 @@ def show_fifa_u17_view():
                                                             if pd.notna(dob) and str(dob).strip():
                                                                 year = str(dob).split('/')[-1] if '/' in str(dob) else str(dob)[:4]
                                                                 try:
-                                                                    st.session_state.home_match_players[idx]['birth_year'] = int(year)
+                                                                    year_int = int(year)
+                                                                    st.session_state.home_match_players[idx]['birth_year'] = year_int
+                                                                    st.info(f"📅 Birth Year set to: {year_int}")
                                                                 except:
                                                                     pass
                                                             
                                                             # Position
                                                             pos = player_db.iloc[0].get('Position', '')
                                                             if pd.notna(pos) and str(pos).strip():
-                                                                st.session_state.home_match_players[idx]['position'] = str(pos).strip()
+                                                                pos_str = str(pos).strip()
+                                                                st.session_state.home_match_players[idx]['position'] = pos_str
+                                                                st.info(f"⚽ Position set to: {pos_str}")
                                                             
                                                             # Num -> number
                                                             num = player_db.iloc[0].get('Num', '')
                                                             if pd.notna(num) and str(num).strip():
                                                                 try:
-                                                                    st.session_state.home_match_players[idx]['number'] = int(float(num))
+                                                                    num_int = int(float(num))
+                                                                    st.session_state.home_match_players[idx]['number'] = num_int
+                                                                    st.info(f"🔢 Number set to: {num_int}")
                                                                 except:
                                                                     pass
                                                             
-                                                            st.success(f"✅ Data loaded for {selected_player}")
+                                                            # Set flag to show success message after rerun
+                                                            st.session_state[f"autofilled_home_{idx}"] = True
                                                             st.rerun()
                                                         else:
                                                             st.warning(f"⚠️ Player {selected_player} not found in database")
@@ -1085,6 +1099,13 @@ def show_fifa_u17_view():
                         display_name = current_name if current_name else 'Not selected'
                         
                         with st.expander(f"👤 Player {idx+1}: {display_name}", expanded=True):
+                            # Check if we just autofilled this player
+                            autofill_key = f"autofilled_away_{idx}"
+                            just_autofilled = st.session_state.get(autofill_key, False)
+                            if just_autofilled:
+                                st.success(f"✅ Auto-filled data for {player_data.get('name', 'player')}")
+                                st.session_state[autofill_key] = False  # Reset flag
+                            
                             col1, col2, col3 = st.columns([3, 1, 2])
                             
                             with col1:
@@ -1117,24 +1138,31 @@ def show_fifa_u17_view():
                                                             if pd.notna(dob) and str(dob).strip():
                                                                 year = str(dob).split('/')[-1] if '/' in str(dob) else str(dob)[:4]
                                                                 try:
-                                                                    st.session_state.away_match_players[idx]['birth_year'] = int(year)
+                                                                    year_int = int(year)
+                                                                    st.session_state.away_match_players[idx]['birth_year'] = year_int
+                                                                    st.info(f"📅 Birth Year set to: {year_int}")
                                                                 except:
                                                                     pass
                                                             
                                                             # Position
                                                             pos = player_db.iloc[0].get('Position', '')
                                                             if pd.notna(pos) and str(pos).strip():
-                                                                st.session_state.away_match_players[idx]['position'] = str(pos).strip()
+                                                                pos_str = str(pos).strip()
+                                                                st.session_state.away_match_players[idx]['position'] = pos_str
+                                                                st.info(f"⚽ Position set to: {pos_str}")
                                                             
                                                             # Num -> number
                                                             num = player_db.iloc[0].get('Num', '')
                                                             if pd.notna(num) and str(num).strip():
                                                                 try:
-                                                                    st.session_state.away_match_players[idx]['number'] = int(float(num))
+                                                                    num_int = int(float(num))
+                                                                    st.session_state.away_match_players[idx]['number'] = num_int
+                                                                    st.info(f"🔢 Number set to: {num_int}")
                                                                 except:
                                                                     pass
                                                             
-                                                            st.success(f"✅ Data loaded for {selected_player}")
+                                                            # Set flag to show success message after rerun
+                                                            st.session_state[f"autofilled_away_{idx}"] = True
                                                             st.rerun()
                                                         else:
                                                             st.warning(f"⚠️ Player {selected_player} not found in database")
