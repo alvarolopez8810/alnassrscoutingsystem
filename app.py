@@ -1072,14 +1072,134 @@ def show_fifa_u17_view():
                                 )
                                 st.session_state.home_match_players[idx]['minutes'] = minutes
                             
-                            # Performance only (Potential removed)
-                            performance = st.selectbox(
-                                "⚽ Performance (1-6)",
-                                [1, 2, 3, 4, 5, 6],
-                                index=player_data.get('performance', 1) - 1,
-                                key=f"home_p_perf_{idx}"
-                            )
-                            st.session_state.home_match_players[idx]['performance'] = performance
+                            # PERFORMANCE and POTENTIAL
+                            col_perf, col_pot = st.columns(2)
+                            with col_perf:
+                                performance = st.selectbox(
+                                    "🎯 PERFORMANCE",
+                                    [1, 2, 3, 4, 5, 6],
+                                    index=player_data.get('performance', 1) - 1,
+                                    key=f"home_p_perf_{idx}"
+                                )
+                                st.session_state.home_match_players[idx]['performance'] = performance
+                            
+                            with col_pot:
+                                potential = st.selectbox(
+                                    "⭐ POTENTIAL",
+                                    [1, 2, 3, 4, 5, 6],
+                                    index=player_data.get('potential', 1) - 1,
+                                    key=f"home_p_pot_{idx}"
+                                )
+                                st.session_state.home_match_players[idx]['potential'] = potential
+                            
+                            # Position-specific items
+                            POSITION_ITEMS = {
+                                'GK': [
+                                    'Reflejos & 1v1. fiabilidad bajo palos',
+                                    'Juego aéreo. autoridad en centros y balones divididos',
+                                    'Juego con los pies. precisión en corto y largo',
+                                    'Mando y comunicación. organiza la defensa',
+                                    'Fiabilidad mental & seguridad. concentración, serenidad, transmitir confianza',
+                                    'Sentido del juego (posicionamiento & lectura). anticipación, sobriedad, elegir bien cuándo intervenir'
+                                ],
+                                'CB': [
+                                    'Duelos defensivos (1v1 + potencia física)',
+                                    'Fiabilidad mental. concentración, serenidad bajo presión',
+                                    'Juego aéreo y defensa de área (Def)',
+                                    'Posicionamiento & Organización. orden en la línea defensiva',
+                                    'Salida de balón (corto, largo y conducción)',
+                                    'Anticipación & Coberturas. lectura de juego, intercepciones',
+                                    'Velocidad y capacidad de giro'
+                                ],
+                                'RB': [
+                                    'Velocidad & Resistencia (ida/vuelta)',
+                                    'Fiabilidad mental. disciplina, concentración, equilibrio',
+                                    '1v1 defensivo + tapar centros',
+                                    'Timing en incorporaciones. saber cuándo doblar y cuándo quedarse',
+                                    'Centros & pase interior',
+                                    'Posicionamiento defensivo (segundo palo)'
+                                ],
+                                'LB': [
+                                    'Velocidad & Resistencia (ida/vuelta)',
+                                    'Fiabilidad mental. disciplina, concentración, equilibrio',
+                                    '1v1 defensivo + tapar centros',
+                                    'Timing en incorporaciones. saber cuándo doblar y cuándo quedarse',
+                                    'Centros & pase interior',
+                                    'Posicionamiento defensivo (segundo palo)'
+                                ],
+                                'DM': [
+                                    'Coberturas, 2das jugadas & posicionamiento. abarcar campo, equilibrio',
+                                    'Juego corto - largo',
+                                    'Recuperación & duelos. intercepciones, tackles',
+                                    'Mando & comunicación. liderazgo silencioso, ordenar bloque',
+                                    'Físico y mentalidad destacado',
+                                    'Juego aéreo'
+                                ],
+                                'CM': [
+                                    'Creatividad & visión. pase vertical, asociación, generar ocasiones',
+                                    'Dinamismo. capacidad de girar, romper líneas, movilidad constante',
+                                    'Llegada & finalización. cifras, goles, asistencias',
+                                    'Trabajo defensivo. recuperación, balance ofensivo-defensivo',
+                                    'Duelos & presencia física',
+                                    'Personalidad competitiva - consistencia. liderazgo, carácter para asumir balón'
+                                ],
+                                'CAM': [
+                                    'Creatividad, asociación & último pase',
+                                    'Compromiso defensivo',
+                                    'Movilidad entre líneas. espalda de pivotes',
+                                    'Toma de decisión. diferencial por sí mismo',
+                                    'Definición. gol + tiro media distancia',
+                                    '1v1 ofensivo. romper líneas con balón',
+                                    'Llegada - desmarques'
+                                ],
+                                'RW': [
+                                    'Velocidad & aceleración',
+                                    '1v1 ofensivo. generar ocasiones por sí mismo',
+                                    'Centros & calidad de servicio',
+                                    'Gol & asistencias. volumen ofensivo',
+                                    'Trabajo defensivo. retorno + pressing',
+                                    'Personalidad, consistencia & toma de decisiones',
+                                    'Juego asociativo'
+                                ],
+                                'LW': [
+                                    'Velocidad & aceleración',
+                                    '1v1 ofensivo. generar ocasiones por sí mismo',
+                                    'Centros & calidad de servicio',
+                                    'Gol & asistencias. volumen ofensivo',
+                                    'Trabajo defensivo. retorno + pressing',
+                                    'Personalidad, consistencia & toma de decisiones',
+                                    'Juego asociativo'
+                                ],
+                                'ST': [
+                                    'GOL. definición fuera y dentro del área (pie + cabeza)',
+                                    'Capacidad de generar ocasiones por sí mismo',
+                                    'Juego de espaldas & descargas. fijar centrales',
+                                    'Movilidad ofensiva. atacar espacios, dinámico',
+                                    'Juego aéreo ofensivo',
+                                    'Trabajo defensivo. primer defensor'
+                                ]
+                            }
+                            
+                            # Get player position and show items
+                            player_pos = player_data.get('position', '')
+                            if player_pos in POSITION_ITEMS:
+                                st.markdown(f"**📊 Evaluación: {player_pos}**")
+                                if 'items' not in st.session_state.home_match_players[idx]:
+                                    st.session_state.home_match_players[idx]['items'] = {}
+                                
+                                for item_idx, item in enumerate(POSITION_ITEMS[player_pos]):
+                                    col_item1, col_item2 = st.columns([4, 1])
+                                    with col_item1:
+                                        st.markdown(f"<small>{item}</small>", unsafe_allow_html=True)
+                                    with col_item2:
+                                        item_value = st.selectbox(
+                                            "Val",
+                                            ["", "Sí", "No"],
+                                            index=0,
+                                            key=f"home_item_{idx}_{item_idx}",
+                                            label_visibility="collapsed"
+                                        )
+                                        st.session_state.home_match_players[idx]['items'][item] = item_value
                             
                             # FIRMAR/CONCLUSION
                             conclusion_options = [
@@ -1099,11 +1219,12 @@ def show_fifa_u17_view():
                             )
                             st.session_state.home_match_players[idx]['conclusion'] = conclusion
                             
-                            # Report text area
+                            # Report text area (optional)
                             report_text = st.text_area(
-                                "📝 Report",
+                                "💬 REPORT (Opcional)",
                                 value=player_data.get('report', ''),
-                                height=150,
+                                height=100,
+                                placeholder="Comentario técnico detallado (opcional)...",
                                 key=f"home_p_report_{idx}"
                             )
                             st.session_state.home_match_players[idx]['report'] = report_text
@@ -1327,14 +1448,134 @@ def show_fifa_u17_view():
                                 )
                                 st.session_state.away_match_players[idx]['minutes'] = minutes
                             
-                            # Performance only (Potential removed)
-                            performance = st.selectbox(
-                                "⚽ Performance (1-6)",
-                                [1, 2, 3, 4, 5, 6],
-                                index=player_data.get('performance', 1) - 1,
-                                key=f"away_p_perf_{idx}"
-                            )
-                            st.session_state.away_match_players[idx]['performance'] = performance
+                            # PERFORMANCE and POTENTIAL
+                            col_perf, col_pot = st.columns(2)
+                            with col_perf:
+                                performance = st.selectbox(
+                                    "🎯 PERFORMANCE",
+                                    [1, 2, 3, 4, 5, 6],
+                                    index=player_data.get('performance', 1) - 1,
+                                    key=f"away_p_perf_{idx}"
+                                )
+                                st.session_state.away_match_players[idx]['performance'] = performance
+                            
+                            with col_pot:
+                                potential = st.selectbox(
+                                    "⭐ POTENTIAL",
+                                    [1, 2, 3, 4, 5, 6],
+                                    index=player_data.get('potential', 1) - 1,
+                                    key=f"away_p_pot_{idx}"
+                                )
+                                st.session_state.away_match_players[idx]['potential'] = potential
+                            
+                            # Position-specific items
+                            POSITION_ITEMS = {
+                                'GK': [
+                                    'Reflejos & 1v1. fiabilidad bajo palos',
+                                    'Juego aéreo. autoridad en centros y balones divididos',
+                                    'Juego con los pies. precisión en corto y largo',
+                                    'Mando y comunicación. organiza la defensa',
+                                    'Fiabilidad mental & seguridad. concentración, serenidad, transmitir confianza',
+                                    'Sentido del juego (posicionamiento & lectura). anticipación, sobriedad, elegir bien cuándo intervenir'
+                                ],
+                                'CB': [
+                                    'Duelos defensivos (1v1 + potencia física)',
+                                    'Fiabilidad mental. concentración, serenidad bajo presión',
+                                    'Juego aéreo y defensa de área (Def)',
+                                    'Posicionamiento & Organización. orden en la línea defensiva',
+                                    'Salida de balón (corto, largo y conducción)',
+                                    'Anticipación & Coberturas. lectura de juego, intercepciones',
+                                    'Velocidad y capacidad de giro'
+                                ],
+                                'RB': [
+                                    'Velocidad & Resistencia (ida/vuelta)',
+                                    'Fiabilidad mental. disciplina, concentración, equilibrio',
+                                    '1v1 defensivo + tapar centros',
+                                    'Timing en incorporaciones. saber cuándo doblar y cuándo quedarse',
+                                    'Centros & pase interior',
+                                    'Posicionamiento defensivo (segundo palo)'
+                                ],
+                                'LB': [
+                                    'Velocidad & Resistencia (ida/vuelta)',
+                                    'Fiabilidad mental. disciplina, concentración, equilibrio',
+                                    '1v1 defensivo + tapar centros',
+                                    'Timing en incorporaciones. saber cuándo doblar y cuándo quedarse',
+                                    'Centros & pase interior',
+                                    'Posicionamiento defensivo (segundo palo)'
+                                ],
+                                'DM': [
+                                    'Coberturas, 2das jugadas & posicionamiento. abarcar campo, equilibrio',
+                                    'Juego corto - largo',
+                                    'Recuperación & duelos. intercepciones, tackles',
+                                    'Mando & comunicación. liderazgo silencioso, ordenar bloque',
+                                    'Físico y mentalidad destacado',
+                                    'Juego aéreo'
+                                ],
+                                'CM': [
+                                    'Creatividad & visión. pase vertical, asociación, generar ocasiones',
+                                    'Dinamismo. capacidad de girar, romper líneas, movilidad constante',
+                                    'Llegada & finalización. cifras, goles, asistencias',
+                                    'Trabajo defensivo. recuperación, balance ofensivo-defensivo',
+                                    'Duelos & presencia física',
+                                    'Personalidad competitiva - consistencia. liderazgo, carácter para asumir balón'
+                                ],
+                                'CAM': [
+                                    'Creatividad, asociación & último pase',
+                                    'Compromiso defensivo',
+                                    'Movilidad entre líneas. espalda de pivotes',
+                                    'Toma de decisión. diferencial por sí mismo',
+                                    'Definición. gol + tiro media distancia',
+                                    '1v1 ofensivo. romper líneas con balón',
+                                    'Llegada - desmarques'
+                                ],
+                                'RW': [
+                                    'Velocidad & aceleración',
+                                    '1v1 ofensivo. generar ocasiones por sí mismo',
+                                    'Centros & calidad de servicio',
+                                    'Gol & asistencias. volumen ofensivo',
+                                    'Trabajo defensivo. retorno + pressing',
+                                    'Personalidad, consistencia & toma de decisiones',
+                                    'Juego asociativo'
+                                ],
+                                'LW': [
+                                    'Velocidad & aceleración',
+                                    '1v1 ofensivo. generar ocasiones por sí mismo',
+                                    'Centros & calidad de servicio',
+                                    'Gol & asistencias. volumen ofensivo',
+                                    'Trabajo defensivo. retorno + pressing',
+                                    'Personalidad, consistencia & toma de decisiones',
+                                    'Juego asociativo'
+                                ],
+                                'ST': [
+                                    'GOL. definición fuera y dentro del área (pie + cabeza)',
+                                    'Capacidad de generar ocasiones por sí mismo',
+                                    'Juego de espaldas & descargas. fijar centrales',
+                                    'Movilidad ofensiva. atacar espacios, dinámico',
+                                    'Juego aéreo ofensivo',
+                                    'Trabajo defensivo. primer defensor'
+                                ]
+                            }
+                            
+                            # Get player position and show items
+                            player_pos = player_data.get('position', '')
+                            if player_pos in POSITION_ITEMS:
+                                st.markdown(f"**📊 Evaluación: {player_pos}**")
+                                if 'items' not in st.session_state.away_match_players[idx]:
+                                    st.session_state.away_match_players[idx]['items'] = {}
+                                
+                                for item_idx, item in enumerate(POSITION_ITEMS[player_pos]):
+                                    col_item1, col_item2 = st.columns([4, 1])
+                                    with col_item1:
+                                        st.markdown(f"<small>{item}</small>", unsafe_allow_html=True)
+                                    with col_item2:
+                                        item_value = st.selectbox(
+                                            "Val",
+                                            ["", "Sí", "No"],
+                                            index=0,
+                                            key=f"away_item_{idx}_{item_idx}",
+                                            label_visibility="collapsed"
+                                        )
+                                        st.session_state.away_match_players[idx]['items'][item] = item_value
                             
                             # FIRMAR/CONCLUSION
                             conclusion_options_away = [
@@ -1354,11 +1595,12 @@ def show_fifa_u17_view():
                             )
                             st.session_state.away_match_players[idx]['conclusion'] = conclusion_away
                             
-                            # Report text area
+                            # Report text area (optional)
                             report_text = st.text_area(
-                                "📝 Report",
+                                "💬 REPORT (Opcional)",
                                 value=player_data.get('report', ''),
-                                height=150,
+                                height=100,
+                                placeholder="Comentario técnico detallado (opcional)...",
                                 key=f"away_p_report_{idx}"
                             )
                             st.session_state.away_match_players[idx]['report'] = report_text
@@ -1383,7 +1625,7 @@ def show_fifa_u17_view():
                         # Add home team players
                         for player in st.session_state.home_match_players:
                             if player['name']:  # Only save if player is selected
-                                player_reports_list.append({
+                                report_dict = {
                                     'Date': str(match_date),
                                     'Scout': scout_name,
                                     'Phase': match_phase,
@@ -1396,14 +1638,22 @@ def show_fifa_u17_view():
                                     'Starter': player['starter'],
                                     'Minutes': player['minutes'],
                                     'Performance': player['performance'],
+                                    'Potential': player.get('potential', ''),
                                     'Conclusion': player.get('conclusion', 'B - Seguir (Follow)'),
                                     'Report': player['report']
-                                })
+                                }
+                                
+                                # Add position-specific items
+                                if 'items' in player:
+                                    for item, value in player['items'].items():
+                                        report_dict[item] = value
+                                
+                                player_reports_list.append(report_dict)
                         
                         # Add away team players
                         for player in st.session_state.away_match_players:
                             if player['name']:  # Only save if player is selected
-                                player_reports_list.append({
+                                report_dict = {
                                     'Date': str(match_date),
                                     'Scout': scout_name,
                                     'Phase': match_phase,
@@ -1416,9 +1666,17 @@ def show_fifa_u17_view():
                                     'Starter': player['starter'],
                                     'Minutes': player['minutes'],
                                     'Performance': player['performance'],
+                                    'Potential': player.get('potential', ''),
                                     'Conclusion': player.get('conclusion', 'B - Seguir (Follow)'),
                                     'Report': player['report']
-                                })
+                                }
+                                
+                                # Add position-specific items
+                                if 'items' in player:
+                                    for item, value in player['items'].items():
+                                        report_dict[item] = value
+                                
+                                player_reports_list.append(report_dict)
                         
                         if player_reports_list:
                             # Save to Google Sheets (with local Excel fallback)
@@ -1607,9 +1865,6 @@ def show_fifa_u17_view():
                     st.markdown("---")
                     st.markdown("### ⚙️ Technical Evaluation")
                     
-                    # Technical ratings
-                    col_eval1, col_eval2, col_eval3 = st.columns(3)
-                    
                     # Helper functions for colors
                     def get_color_for_value(value):
                         if value <= 2:
@@ -1629,9 +1884,120 @@ def show_fifa_u17_view():
                         else:
                             return "#FFA500"  # Orange
                     
+                    # Map position codes to items
+                    POSITION_ITEMS = {
+                        'GK': [
+                            'Reflejos & 1v1. fiabilidad bajo palos',
+                            'Juego aéreo. autoridad en centros y balones divididos',
+                            'Juego con los pies. precisión en corto y largo',
+                            'Mando y comunicación. organiza la defensa',
+                            'Fiabilidad mental & seguridad. concentración, serenidad, transmitir confianza',
+                            'Sentido del juego (posicionamiento & lectura). anticipación, sobriedad, elegir bien cuándo intervenir'
+                        ],
+                        'CB': [
+                            'Duelos defensivos (1v1 + potencia física)',
+                            'Fiabilidad mental. concentración, serenidad bajo presión',
+                            'Juego aéreo y defensa de área (Def)',
+                            'Posicionamiento & Organización. orden en la línea defensiva',
+                            'Salida de balón (corto, largo y conducción)',
+                            'Anticipación & Coberturas. lectura de juego, intercepciones',
+                            'Velocidad y capacidad de giro'
+                        ],
+                        'RB': [
+                            'Velocidad & Resistencia (ida/vuelta)',
+                            'Fiabilidad mental. disciplina, concentración, equilibrio',
+                            '1v1 defensivo + tapar centros',
+                            'Timing en incorporaciones. saber cuándo doblar y cuándo quedarse',
+                            'Centros & pase interior',
+                            'Posicionamiento defensivo (segundo palo)'
+                        ],
+                        'LB': [
+                            'Velocidad & Resistencia (ida/vuelta)',
+                            'Fiabilidad mental. disciplina, concentración, equilibrio',
+                            '1v1 defensivo + tapar centros',
+                            'Timing en incorporaciones. saber cuándo doblar y cuándo quedarse',
+                            'Centros & pase interior',
+                            'Posicionamiento defensivo (segundo palo)'
+                        ],
+                        'DM': [
+                            'Coberturas, 2das jugadas & posicionamiento. abarcar campo, equilibrio',
+                            'Juego corto - largo',
+                            'Recuperación & duelos. intercepciones, tackles',
+                            'Mando & comunicación. liderazgo silencioso, ordenar bloque',
+                            'Físico y mentalidad destacado',
+                            'Juego aéreo'
+                        ],
+                        'CM': [
+                            'Creatividad & visión. pase vertical, asociación, generar ocasiones',
+                            'Dinamismo. capacidad de girar, romper líneas, movilidad constante',
+                            'Llegada & finalización. cifras, goles, asistencias',
+                            'Trabajo defensivo. recuperación, balance ofensivo-defensivo',
+                            'Duelos & presencia física',
+                            'Personalidad competitiva - consistencia. liderazgo, carácter para asumir balón'
+                        ],
+                        'CAM': [
+                            'Creatividad, asociación & último pase',
+                            'Compromiso defensivo',
+                            'Movilidad entre líneas. espalda de pivotes',
+                            'Toma de decisión. diferencial por sí mismo',
+                            'Definición. gol + tiro media distancia',
+                            '1v1 ofensivo. romper líneas con balón',
+                            'Llegada - desmarques'
+                        ],
+                        'RW': [
+                            'Velocidad & aceleración',
+                            '1v1 ofensivo. generar ocasiones por sí mismo',
+                            'Centros & calidad de servicio',
+                            'Gol & asistencias. volumen ofensivo',
+                            'Trabajo defensivo. retorno + pressing',
+                            'Personalidad, consistencia & toma de decisiones',
+                            'Juego asociativo'
+                        ],
+                        'LW': [
+                            'Velocidad & aceleración',
+                            '1v1 ofensivo. generar ocasiones por sí mismo',
+                            'Centros & calidad de servicio',
+                            'Gol & asistencias. volumen ofensivo',
+                            'Trabajo defensivo. retorno + pressing',
+                            'Personalidad, consistencia & toma de decisiones',
+                            'Juego asociativo'
+                        ],
+                        'ST': [
+                            'GOL. definición fuera y dentro del área (pie + cabeza)',
+                            'Capacidad de generar ocasiones por sí mismo',
+                            'Juego de espaldas & descargas. fijar centrales',
+                            'Movilidad ofensiva. atacar espacios, dinámico',
+                            'Juego aéreo ofensivo',
+                            'Trabajo defensivo. primer defensor'
+                        ]
+                    }
+                    
+                    # Get player position code (extract from position name)
+                    player_position_full = player_data.get(position_col_ind, '')
+                    position_code = None
+                    
+                    # Map Spanish position names to codes
+                    position_mapping = {
+                        'Portero': 'GK',
+                        'Defensa Central': 'CB',
+                        'Lateral Derecho': 'RB',
+                        'Lateral Izquierdo': 'LB',
+                        'Pivote': 'DM',
+                        'Mediocentro': 'CM',
+                        'Mediocentro Ofensivo': 'CAM',
+                        'Extremo Derecho': 'RW',
+                        'Extremo Izquierdo': 'LW',
+                        'Delantero Centro': 'ST'
+                    }
+                    
+                    position_code = position_mapping.get(player_position_full)
+                    
+                    # PERFORMANCE and POTENTIAL
+                    col_eval1, col_eval2 = st.columns(2)
+                    
                     with col_eval1:
                         rendimiento = st.selectbox(
-                            "🎯 Rendimiento (Performance)",
+                            "🎯 PERFORMANCE",
                             [1, 2, 3, 4, 5, 6],
                             index=2,
                             key="ind_rendimiento"
@@ -1646,7 +2012,7 @@ def show_fifa_u17_view():
                     
                     with col_eval2:
                         potencial = st.selectbox(
-                            "⭐ Potencial (Potential)",
+                            "⭐ POTENTIAL",
                             [1, 2, 3, 4, 5, 6],
                             index=2,
                             key="ind_potencial"
@@ -1659,36 +2025,36 @@ def show_fifa_u17_view():
                             </div>
                         ''', unsafe_allow_html=True)
                     
-                    with col_eval3:
-                        perfil_options = [
-                            "1 - BACKUP SPL - TOP 4",
-                            "2 - STARTER SPL - TOP 4",
-                            "3 - STAND OUT SPL - TOP4",
-                            "4 - FIRST PRO LEVEL",
-                            "5 - ELITE CHAMPIONS LEAGUE",
-                            "6 - TOP WORLD CLASS"
-                        ]
-                        perfil_selected = st.selectbox(
-                            "📊 Perfil (Profile)",
-                            perfil_options,
-                            index=2,
-                            key="ind_perfil"
-                        )
-                        # Extract numeric value
-                        perfil = int(perfil_selected.split(' - ')[0])
-                        perfil_color = get_color_for_perfil(perfil_selected)
-                        perfil_pct = (perfil / 6) * 100
-                        st.markdown(f'''
-                            <div style="background-color: #e0e0e0; border-radius: 10px; height: 20px; overflow: hidden;">
-                                <div style="background-color: {perfil_color}; height: 100%; width: {perfil_pct}%; border-radius: 10px;"></div>
-                            </div>
-                        ''', unsafe_allow_html=True)
+                    st.markdown("---")
                     
-                    # Technical comment
+                    # Position-specific items
+                    if position_code and position_code in POSITION_ITEMS:
+                        st.markdown(f"### 📊 Evaluación por Posición: {player_position_full} ({position_code})")
+                        
+                        items_data = {}
+                        for idx, item in enumerate(POSITION_ITEMS[position_code]):
+                            col_item1, col_item2 = st.columns([4, 1])
+                            with col_item1:
+                                st.markdown(f"**{item}**")
+                            with col_item2:
+                                item_value = st.selectbox(
+                                    "Valoración",
+                                    ["", "Sí", "No"],
+                                    key=f"item_{position_code}_{idx}",
+                                    label_visibility="collapsed"
+                                )
+                                items_data[item] = item_value
+                        
+                        st.markdown("---")
+                    else:
+                        st.warning("⚠️ No se encontraron ítems específicos para esta posición.")
+                        items_data = {}
+                    
+                    # REPORT (optional)
                     comentario_tecnico = st.text_area(
-                        "💬 Technical Comment / Comentario Técnico",
+                        "💬 REPORT (Opcional)",
                         height=150,
-                        placeholder="Enter detailed technical evaluation...",
+                        placeholder="Comentario técnico detallado (opcional)...",
                         key="ind_comentario"
                     )
                     
@@ -1716,12 +2082,17 @@ def show_fifa_u17_view():
                             'Contract': contract,
                             'Agent': agent_name,
                             'Agent Phone': agent_phone,
-                            'Rendimiento': rendimiento,
-                            'Potencial': potencial,
-                            'Perfil': perfil_selected,  # Save full description
-                            'Technical Comment': comentario_tecnico,
+                            'Performance': rendimiento,
+                            'Potential': potencial,
+                            'Report': comentario_tecnico,
                             'Conclusion': conclusion
                         }
+                        
+                        # Add position-specific items to report data
+                        if position_code and position_code in POSITION_ITEMS:
+                            for item, value in items_data.items():
+                                # Use item text as column name
+                                report_data[item] = value
                         
                         # Save photo: use new uploaded photo, or keep existing one
                         if uploaded_photo:
